@@ -21,10 +21,18 @@ stdenv.mkDerivation {
   # GCC 15+ treats this as an error by default.
   env.NIX_CFLAGS_COMPILE = "-Wno-incompatible-pointer-types";
 
-  # Fix upstream bug: typo in variable name (desc vs descr)
+  # Fix upstream bugs in device detection:
+  # 1. Typo: "desc" should be "descr" (undeclared variable)
+  # 2. QuadCast 2S PID 0x02b5 only checked under VID 0x0951 (Kingston),
+  #    but HP-branded units report VID 0x03f0. Add 0x02b5 to EU check too.
   postPatch = ''
     substituteInPlace modules/devio.c \
       --replace-fail "desc.idProduct" "descr.idProduct"
+
+    substituteInPlace modules/devio.c \
+      --replace-fail \
+        "descr.idProduct == DEV_PID_DUOCAST)" \
+        "descr.idProduct == DEV_PID_DUOCAST || descr.idProduct == DEV_PID_NA3)"
   '';
 
   buildPhase = ''
