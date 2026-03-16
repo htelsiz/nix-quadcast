@@ -11,7 +11,7 @@ use iced::widget::{
     button, canvas::Canvas, column, container, pick_list, row, scrollable, slider, text,
     text_input, tooltip, Space,
 };
-use iced::{Background, Border, Color, Element, Length, Subscription, Task, Theme};
+use iced::{Background, Border, Color, Element, Font, Length, Shadow, Subscription, Task, Theme};
 
 use mic_preview::MicPreview;
 
@@ -52,6 +52,12 @@ const MANTLE: Color =
 /// Default LED preview color (matches unlit mic body).
 const DEFAULT_PREVIEW: Color = SURFACE0;
 
+/// Iosevka monospace font for code blocks.
+const IOSEVKA: Font = Font {
+    family: iced::font::Family::Name("Iosevka"),
+    ..Font::MONOSPACE
+};
+
 // ---------------------------------------------------------------------------
 // Reusable style helpers
 // ---------------------------------------------------------------------------
@@ -69,6 +75,29 @@ fn card<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
         .padding(16)
         .width(Length::Fill)
         .into()
+}
+
+fn scrollable_style() -> scrollable::Style {
+    let rail = scrollable::Rail {
+        background: Some(Background::Color(Color::TRANSPARENT)),
+        border: Border::default(),
+        scroller: scrollable::Scroller {
+            background: Background::Color(SURFACE1),
+            border: Border::default().rounded(4),
+        },
+    };
+    scrollable::Style {
+        container: container::Style::default(),
+        vertical_rail: rail,
+        horizontal_rail: rail,
+        gap: None,
+        auto_scroll: scrollable::AutoScroll {
+            background: Background::Color(SURFACE0),
+            border: Border::default().rounded(4),
+            shadow: Shadow::default(),
+            icon: SUBTEXT0,
+        },
+    }
 }
 
 fn accent_slider_style(_theme: &Theme, status: slider::Status) -> slider::Style {
@@ -192,6 +221,7 @@ enum Message {
     // Diagnostics
     ToggleDiagnostics,
     ToggleConfigView,
+    CopyConfig,
     // Engine
     Engine(engine::Event),
     // Audio
@@ -419,6 +449,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::ToggleConfigView => {
             app.show_config = !app.show_config;
+        }
+        Message::CopyConfig => {
+            return iced::clipboard::write(app.config.to_json());
         }
         Message::Engine(e) => match e {
             engine::Event::Ready(tx) => {
@@ -671,49 +704,48 @@ fn subscription(_app: &App) -> Subscription<Message> {
 fn view(app: &App) -> Element<'_, Message> {
     let mic = container(
         column![
-            row![
-                text("Live Preview").size(11).color(OVERLAY0),
-                Space::new().width(Length::Fill),
-                text(format!(
-                    "{} \u{00B7} {}",
-                    app.mode.name(),
-                    match app.zone {
-                        Zone::Both => "Both Zones",
-                        Zone::Upper => "Upper Zone",
-                        Zone::Lower => "Lower Zone",
-                    }
-                ))
-                .size(11)
-                .color(SURFACE2),
-            ]
-            .padding([0, 4]),
             Canvas::new(MicPreview {
                 upper_color: app.upper_preview_color,
                 lower_color: app.lower_preview_color,
             })
-            .width(220)
-            .height(440),
+            .width(240)
+            .height(480),
+            text(format!(
+                "{} \u{00B7} {}",
+                app.mode.name(),
+                match app.zone {
+                    Zone::Both => "Both",
+                    Zone::Upper => "Upper",
+                    Zone::Lower => "Lower",
+                }
+            ))
+            .size(11)
+            .color(OVERLAY0)
+            .center(),
         ]
-        .spacing(8),
+        .spacing(8)
+        .align_x(iced::Alignment::Center),
     )
-    .padding([24, 24])
+    .padding([20, 16])
     .center_y(Length::Fill);
 
-    let controls = column![
-        view_header(),
-        card(view_profile_selector(app)),
-        card(
-            column![view_zone_selector(app), view_mode_grid(app),].spacing(12)
-        ),
-        card(view_sliders(app)),
-        card(view_color_palette(app)),
-        Space::new().height(Length::Fill),
-        view_diagnostics(app),
-        view_status(app),
-    ]
-    .spacing(12)
-    .padding([24, 28])
-    .width(Length::Fill);
+    let controls = scrollable(
+        column![
+            view_header(),
+            Space::new().height(4),
+            card(view_profile_selector(app)),
+            card(column![view_zone_selector(app), view_mode_grid(app)].spacing(12)),
+            card(view_sliders(app)),
+            card(view_color_palette(app)),
+            Space::new().height(Length::Fill),
+            view_diagnostics(app),
+            view_status(app),
+        ]
+        .spacing(10)
+        .padding([20, 24])
+        .width(Length::Fill),
+    )
+    .style(|_theme: &Theme, _status| scrollable_style());
 
     // Vertical separator between mic and controls
     let separator = container(
@@ -1424,61 +1456,194 @@ fn view_status(app: &App) -> Element<'_, Message> {
 // Button styles
 // ---------------------------------------------------------------------------
 
+/// Catppuccin Mocha syntax colors for JSON highlighting.
+const SYN_KEY: Color =
+    Color::from_rgb(0x89 as f32 / 255.0, 0xB4 as f32 / 255.0, 0xFA as f32 / 255.0); // Blue
+const SYN_STRING: Color =
+    Color::from_rgb(0xA6 as f32 / 255.0, 0xE3 as f32 / 255.0, 0xA1 as f32 / 255.0); // Green
+const SYN_NUMBER: Color =
+    Color::from_rgb(0xFA as f32 / 255.0, 0xB3 as f32 / 255.0, 0x87 as f32 / 255.0); // Peach
+const SYN_BOOL: Color =
+    Color::from_rgb(0xCB as f32 / 255.0, 0xA6 as f32 / 255.0, 0xF7 as f32 / 255.0); // Mauve
+const SYN_PUNCT: Color = OVERLAY0;
+
+/// Build syntax-highlighted JSON as a column of rich text rows.
+fn highlighted_json<'a>(json: &str) -> Element<'a, Message> {
+    let mut lines: Vec<Element<'a, Message>> = Vec::new();
+    for line in json.lines() {
+        let mut spans: Vec<iced::widget::text::Span<'a, Font>> = Vec::new();
+        let trimmed = line.trim_start();
+        let indent = line.len() - trimmed.len();
+        if indent > 0 {
+            spans.push(iced::widget::text::Span {
+                text: " ".repeat(indent).into(),
+                ..Default::default()
+            });
+        }
+
+        let mut chars = trimmed.chars().peekable();
+        let mut buf = String::new();
+        while let Some(&ch) = chars.peek() {
+            match ch {
+                '"' => {
+                    // Collect the full quoted string
+                    buf.clear();
+                    buf.push(chars.next().unwrap()); // opening "
+                    let mut escaped = false;
+                    for c in chars.by_ref() {
+                        buf.push(c);
+                        if escaped {
+                            escaped = false;
+                        } else if c == '\\' {
+                            escaped = true;
+                        } else if c == '"' {
+                            break;
+                        }
+                    }
+                    // Check if this is a key (followed by ':')
+                    let rest: String = trimmed
+                        .get(indent + spans.iter().map(|s| s.text.len()).sum::<usize>() + buf.len()..)
+                        .unwrap_or("")
+                        .chars()
+                        .take_while(|c| c.is_whitespace() || *c == ':')
+                        .collect();
+                    let is_key = rest.contains(':');
+                    let color = if is_key { SYN_KEY } else { SYN_STRING };
+                    spans.push(iced::widget::text::Span {
+                        text: buf.clone().into(),
+                        color: Some(color),
+                        font: Some(IOSEVKA),
+                        size: Some(iced::Pixels(12.0)),
+                        ..Default::default()
+                    });
+                }
+                '0'..='9' | '-' => {
+                    buf.clear();
+                    while let Some(&c) = chars.peek() {
+                        if c.is_ascii_digit() || c == '.' || c == '-' || c == 'e' || c == 'E' {
+                            buf.push(chars.next().unwrap());
+                        } else {
+                            break;
+                        }
+                    }
+                    spans.push(iced::widget::text::Span {
+                        text: buf.clone().into(),
+                        color: Some(SYN_NUMBER),
+                        font: Some(IOSEVKA),
+                        size: Some(iced::Pixels(12.0)),
+                        ..Default::default()
+                    });
+                }
+                't' | 'f' | 'n' => {
+                    buf.clear();
+                    while let Some(&c) = chars.peek() {
+                        if c.is_ascii_alphabetic() {
+                            buf.push(chars.next().unwrap());
+                        } else {
+                            break;
+                        }
+                    }
+                    spans.push(iced::widget::text::Span {
+                        text: buf.clone().into(),
+                        color: Some(SYN_BOOL),
+                        font: Some(IOSEVKA),
+                        size: Some(iced::Pixels(12.0)),
+                        ..Default::default()
+                    });
+                }
+                '{' | '}' | '[' | ']' | ':' | ',' => {
+                    spans.push(iced::widget::text::Span {
+                        text: chars.next().unwrap().to_string().into(),
+                        color: Some(SYN_PUNCT),
+                        font: Some(IOSEVKA),
+                        size: Some(iced::Pixels(12.0)),
+                        ..Default::default()
+                    });
+                }
+                _ => {
+                    // Whitespace or unknown — consume
+                    spans.push(iced::widget::text::Span {
+                        text: chars.next().unwrap().to_string().into(),
+                        color: Some(SUBTEXT0),
+                        font: Some(IOSEVKA),
+                        size: Some(iced::Pixels(12.0)),
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+        if spans.is_empty() {
+            spans.push(iced::widget::text::Span {
+                text: " ".into(),
+                ..Default::default()
+            });
+        }
+        let rich = iced::widget::rich_text(spans).font(IOSEVKA).size(12);
+        lines.push(rich.into());
+    }
+    column(lines).spacing(1).into()
+}
+
 fn view_config_panel(app: &App) -> Element<'_, Message> {
     let json = app.config.to_json();
 
     let header = row![
         text("Live Config").size(13).color(LAVENDER),
         Space::new().width(Length::Fill),
-        button(text("Close").size(11).center().color(SUBTEXT0))
-            .padding([4, 10])
-            .on_press(Message::ToggleConfigView)
-            .style(|_theme: &Theme, status| {
-                let bg = if status == button::Status::Hovered {
-                    SURFACE1
-                } else {
-                    Color::TRANSPARENT
-                };
-                button::Style {
-                    background: Some(Background::Color(bg)),
-                    border: Border::default()
-                        .rounded(6)
-                        .width(1.0)
-                        .color(SURFACE1),
-                    ..button::Style::default()
-                }
-            }),
+        config_panel_btn("Copy", Message::CopyConfig, GREEN),
+        config_panel_btn("Close", Message::ToggleConfigView, SUBTEXT0),
     ]
+    .spacing(6)
     .align_y(iced::Alignment::Center);
 
     let code_block = container(
         scrollable(
-            text(json)
-                .size(11)
-                .font(iced::Font::MONOSPACE)
-                .color(SUBTEXT0),
+            container(highlighted_json(&json)).padding([4, 0]),
         )
-        .height(Length::Fill),
+        .height(Length::Fill)
+        .style(|_theme: &Theme, _status| scrollable_style()),
     )
     .style(|_theme: &Theme| container::Style {
-        background: Some(Background::Color(MANTLE)),
+        background: Some(Background::Color(BASE)),
         border: Border::default()
             .rounded(8)
             .width(1.0)
             .color(SURFACE0),
         ..container::Style::default()
     })
-    .padding([10, 12])
+    .padding([12, 14])
     .width(Length::Fill)
     .height(Length::Fill);
 
     container(
-        column![header, code_block].spacing(8),
+        column![header, code_block].spacing(10),
     )
-    .padding([28, 20])
-    .width(320)
+    .padding([24, 16])
+    .width(340)
     .height(Length::Fill)
     .into()
+}
+
+fn config_panel_btn(label: &'static str, msg: Message, color: Color) -> Element<'static, Message> {
+    button(text(label).size(11).center().color(color))
+        .padding([4, 10])
+        .on_press(msg)
+        .style(move |_theme: &Theme, status| {
+            let bg = if status == button::Status::Hovered {
+                SURFACE1
+            } else {
+                Color::TRANSPARENT
+            };
+            button::Style {
+                background: Some(Background::Color(bg)),
+                border: Border::default()
+                    .rounded(6)
+                    .width(1.0)
+                    .color(SURFACE1),
+                ..button::Style::default()
+            }
+        })
+        .into()
 }
 
 fn pill_btn_style(_theme: &Theme, status: button::Status, selected: bool) -> button::Style {
