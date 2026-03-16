@@ -17,20 +17,24 @@ stdenv.mkDerivation {
 
   buildInputs = [ libusb1 ];
 
-  # Reset USB device on BUSY instead of giving up.
-  # Other programs (Wine, PipeWire, etc.) may leave stale HID claims.
-  patches = [ ./usb-reset-on-busy.patch ];
+  patches = [
+    # Reset USB device on BUSY instead of giving up (Wine/PipeWire stale claims)
+    ./usb-reset-on-busy.patch
+    # Fix QuadCast 2S protocol: correct endpoint (0x06 not 0x07) + read ACK
+    # responses from EP 0x85 between each packet (discovered via Wireshark capture)
+    ./qs2s-protocol-fix.patch
+  ];
 
   buildPhase = ''
     runHook preBuild
-    make quadcastrgb
+    make dev
     runHook postBuild
   '';
 
   installPhase = ''
     runHook preInstall
     mkdir -p $out/bin $out/share/man/man1
-    cp quadcastrgb $out/bin/
+    cp dev $out/bin/quadcastrgb
     cp man/quadcastrgb.1.gz $out/share/man/man1/ 2>/dev/null || true
     runHook postInstall
   '';
