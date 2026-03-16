@@ -1,9 +1,11 @@
 //! Persistent application configuration via XDG-compliant config files.
 //!
-//! Config path: `~/.config/sliglight/config.toml` (managed by confy).
+//! Config path: `~/.config/sliglight/config.json`.
 //! Built-in profiles (8 theme + 5 practical) are inserted on first run.
 
 use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
@@ -20,14 +22,14 @@ pub struct Profile {
 }
 
 impl Profile {
-    /// Serialize this profile to a TOML string.
-    pub fn to_toml(&self) -> Result<String, toml::ser::Error> {
-        toml::to_string_pretty(self)
+    /// Serialize this profile to a pretty-printed JSON string.
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(self)
     }
 
-    /// Deserialize a profile from a TOML string.
-    pub fn from_toml(s: &str) -> Result<Self, toml::de::Error> {
-        toml::from_str(s)
+    /// Deserialize a profile from a JSON string.
+    pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(s)
     }
 }
 
@@ -140,15 +142,38 @@ pub fn builtin_profiles() -> HashMap<String, Profile> {
     ])
 }
 
+/// Config file path: `~/.config/sliglight/config.json`.
+fn config_path() -> PathBuf {
+    let dir = dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("sliglight");
+    dir.join("config.json")
+}
+
 impl AppConfig {
     /// Load config from disk, falling back to defaults.
     pub fn load() -> Self {
-        confy::load("sliglight", "config").unwrap_or_default()
+        let path = config_path();
+        match fs::read_to_string(&path) {
+            Ok(contents) => serde_json::from_str(&contents).unwrap_or_default(),
+            Err(_) => Self::default(),
+        }
     }
 
     /// Save config to disk.
     pub fn save(&self) {
-        let _ = confy::store("sliglight", "config", self);
+        let path = config_path();
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Ok(json) = serde_json::to_string_pretty(self) {
+            let _ = fs::write(&path, json);
+        }
+    }
+
+    /// Serialize the full config to pretty-printed JSON.
+    pub fn to_json(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_default()
     }
 
     /// Get the currently active profile, or `None` if it doesn't exist.

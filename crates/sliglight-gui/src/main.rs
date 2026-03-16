@@ -8,7 +8,7 @@ mod screen_lock;
 mod tray;
 
 use iced::widget::{
-    button, canvas::Canvas, column, container, pick_list, row, slider, text,
+    button, canvas::Canvas, column, container, pick_list, row, scrollable, slider, text,
     text_input, tooltip, Space,
 };
 use iced::{Background, Border, Color, Element, Length, Subscription, Task, Theme};
@@ -59,7 +59,7 @@ fn main() -> iced::Result {
         .theme(Theme::CatppuccinMocha)
         .subscription(subscription)
         .window(iced::window::Settings {
-            size: iced::Size::new(860.0, 720.0),
+            size: iced::Size::new(880.0, 720.0),
             icon: load_icon(),
             ..Default::default()
         })
@@ -113,6 +113,7 @@ struct App {
     import_text: String,
     // Diagnostics
     show_diagnostics: bool,
+    show_config: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -150,6 +151,7 @@ enum Message {
     ImportTomlInput(String),
     // Diagnostics
     ToggleDiagnostics,
+    ToggleConfigView,
     // Engine
     Engine(engine::Event),
     // Audio
@@ -197,6 +199,7 @@ fn boot() -> (App, Task<Message>) {
             export_text: String::new(),
             import_text: String::new(),
             show_diagnostics: false,
+            show_config: false,
             config,
         },
         Task::none(),
@@ -349,10 +352,10 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::ExportProfile => {
             let profile = current_profile(app);
-            app.export_text = profile.to_toml().unwrap_or_default();
+            app.export_text = profile.to_json().unwrap_or_default();
         }
         Message::ImportProfile => {
-            if let Ok(profile) = Profile::from_toml(&app.import_text) {
+            if let Ok(profile) = Profile::from_json(&app.import_text) {
                 let name = format!("Imported {}", app.config.profiles.len() + 1);
                 app.config.profiles.insert(name.clone(), profile.clone());
                 app.config.active_profile = name;
@@ -373,6 +376,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::ToggleDiagnostics => {
             app.show_diagnostics = !app.show_diagnostics;
+        }
+        Message::ToggleConfigView => {
+            app.show_config = !app.show_config;
         }
         Message::Engine(e) => match e {
             engine::Event::Ready(tx) => {
@@ -664,7 +670,23 @@ fn view(app: &App) -> Element<'_, Message> {
     .padding([40, 0])
     .height(Length::Fill);
 
-    container(row![mic, separator, controls])
+    let mut main_row = row![mic, separator, controls];
+
+    if app.show_config {
+        let sep2 = container(
+            container(Space::new().width(1).height(Length::Fill)).style(
+                |_theme: &Theme| container::Style {
+                    background: Some(Background::Color(SURFACE0)),
+                    ..container::Style::default()
+                },
+            ),
+        )
+        .padding([40, 0])
+        .height(Length::Fill);
+        main_row = main_row.push(sep2).push(view_config_panel(app));
+    }
+
+    container(main_row)
         .style(|_theme: &Theme| container::Style {
             background: Some(Background::Color(BASE)),
             ..container::Style::default()
@@ -1104,7 +1126,7 @@ fn view_export(app: &App) -> Element<'_, Message> {
     }
     container(
         column![
-            section_label("Exported Profile (TOML)"),
+            section_label("Exported Profile (JSON)"),
             text(&app.export_text).size(11).color(SUBTEXT0),
         ]
         .spacing(4),
@@ -1123,7 +1145,7 @@ fn view_export(app: &App) -> Element<'_, Message> {
 }
 
 fn view_import(app: &App) -> Element<'_, Message> {
-    let import_field = text_input("Paste TOML profile here...", &app.import_text)
+    let import_field = text_input("Paste JSON profile here...", &app.import_text)
         .on_input(Message::ImportTomlInput)
         .size(11)
         .width(Length::Fill)
@@ -1197,8 +1219,36 @@ fn view_diagnostics(app: &App) -> Element<'_, Message> {
         }
     });
 
+    let config_btn = button(
+        text(if app.show_config {
+            "Hide Config"
+        } else {
+            "Config"
+        })
+        .size(11)
+        .center()
+        .color(SUBTEXT0),
+    )
+    .padding([4, 10])
+    .on_press(Message::ToggleConfigView)
+    .style(|_theme: &Theme, status| {
+        let bg = if status == button::Status::Hovered {
+            SURFACE1
+        } else {
+            Color::TRANSPARENT
+        };
+        button::Style {
+            background: Some(Background::Color(bg)),
+            border: Border::default()
+                .rounded(6)
+                .width(1.0)
+                .color(SURFACE1),
+            ..button::Style::default()
+        }
+    });
+
     if !app.show_diagnostics {
-        return toggle_btn.into();
+        return row![toggle_btn, config_btn].spacing(6).into();
     }
 
     let connected_str = match &app.connection {
@@ -1275,7 +1325,9 @@ fn view_diagnostics(app: &App) -> Element<'_, Message> {
         .padding([8, 10])
         .width(Length::Fill);
 
-    column![toggle_btn, panel].spacing(4).into()
+    column![row![toggle_btn, config_btn].spacing(6), panel]
+        .spacing(4)
+        .into()
 }
 
 fn view_status(app: &App) -> Element<'_, Message> {
@@ -1322,6 +1374,63 @@ fn view_status(app: &App) -> Element<'_, Message> {
 // ---------------------------------------------------------------------------
 // Button styles
 // ---------------------------------------------------------------------------
+
+fn view_config_panel(app: &App) -> Element<'_, Message> {
+    let json = app.config.to_json();
+
+    let header = row![
+        text("Live Config").size(13).color(LAVENDER),
+        Space::new().width(Length::Fill),
+        button(text("Close").size(11).center().color(SUBTEXT0))
+            .padding([4, 10])
+            .on_press(Message::ToggleConfigView)
+            .style(|_theme: &Theme, status| {
+                let bg = if status == button::Status::Hovered {
+                    SURFACE1
+                } else {
+                    Color::TRANSPARENT
+                };
+                button::Style {
+                    background: Some(Background::Color(bg)),
+                    border: Border::default()
+                        .rounded(6)
+                        .width(1.0)
+                        .color(SURFACE1),
+                    ..button::Style::default()
+                }
+            }),
+    ]
+    .align_y(iced::Alignment::Center);
+
+    let code_block = container(
+        scrollable(
+            text(json)
+                .size(11)
+                .font(iced::Font::MONOSPACE)
+                .color(SUBTEXT0),
+        )
+        .height(Length::Fill),
+    )
+    .style(|_theme: &Theme| container::Style {
+        background: Some(Background::Color(MANTLE)),
+        border: Border::default()
+            .rounded(8)
+            .width(1.0)
+            .color(SURFACE0),
+        ..container::Style::default()
+    })
+    .padding([10, 12])
+    .width(Length::Fill)
+    .height(Length::Fill);
+
+    container(
+        column![header, code_block].spacing(8),
+    )
+    .padding([28, 20])
+    .width(320)
+    .height(Length::Fill)
+    .into()
+}
 
 fn pill_btn_style(_theme: &Theme, status: button::Status, selected: bool) -> button::Style {
     if selected {
