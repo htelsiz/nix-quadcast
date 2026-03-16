@@ -3,8 +3,10 @@
 mod engine;
 mod mic_preview;
 
-use iced::widget::{button, column, container, row, slider, text, Space};
+use iced::widget::{button, canvas::Canvas, column, container, row, slider, text, Space};
 use iced::{Background, Border, Color, Element, Length, Subscription, Task, Theme};
+
+use mic_preview::MicPreview;
 
 use sliglight_core::animations::{Mode, Zone};
 
@@ -14,9 +16,16 @@ fn main() -> iced::Result {
         .title("Sliglight")
         .theme(Theme::CatppuccinMocha)
         .subscription(subscription)
-        .window_size((680.0, 750.0))
+        .window_size((900.0, 750.0))
         .run()
 }
+
+/// Default LED preview color (dark gray, matches unlit mic).
+const DEFAULT_PREVIEW: Color = Color::from_rgb(
+    0x31 as f32 / 255.0,
+    0x32 as f32 / 255.0,
+    0x44 as f32 / 255.0,
+);
 
 struct App {
     zone: Zone,
@@ -26,6 +35,8 @@ struct App {
     colors: Vec<(u8, u8, u8)>,
     status: Status,
     engine: Option<engine::Handle>,
+    upper_preview_color: Color,
+    lower_preview_color: Color,
 }
 
 enum Status {
@@ -58,6 +69,8 @@ fn boot() -> (App, Task<Message>) {
             colors: vec![(255, 0, 0)],
             status: Status::Idle,
             engine: None,
+            upper_preview_color: DEFAULT_PREVIEW,
+            lower_preview_color: DEFAULT_PREVIEW,
         },
         Task::none(),
     )
@@ -115,11 +128,16 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             app.colors = vec![(255, 0, 0)];
             app.engine = None;
             app.status = Status::Idle;
+            app.upper_preview_color = DEFAULT_PREVIEW;
+            app.lower_preview_color = DEFAULT_PREVIEW;
         }
         Message::EngineEvent(e) => match e {
             engine::Event::Connected => app.status = Status::Connected,
             engine::Event::Error(msg) => app.status = Status::Error(msg),
-            engine::Event::FrameSent { .. } => {}
+            engine::Event::FrameSent { upper, lower } => {
+                app.upper_preview_color = Color::from_rgb8(upper.0, upper.1, upper.2);
+                app.lower_preview_color = Color::from_rgb8(lower.0, lower.1, lower.2);
+            }
         },
     }
     Task::none()
@@ -134,7 +152,17 @@ fn subscription(app: &App) -> Subscription<Message> {
 }
 
 fn view(app: &App) -> Element<'_, Message> {
-    let content = column![
+    let mic = container(
+        Canvas::new(MicPreview {
+            upper_color: app.upper_preview_color,
+            lower_color: app.lower_preview_color,
+        })
+        .width(200)
+        .height(400),
+    )
+    .padding(24);
+
+    let controls = column![
         view_title(),
         view_zone_selector(app),
         view_mode_grid(app),
@@ -148,7 +176,7 @@ fn view(app: &App) -> Element<'_, Message> {
     .padding(24)
     .width(Length::Fill);
 
-    container(content)
+    container(row![mic, controls])
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
