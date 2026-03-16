@@ -109,6 +109,7 @@ struct App {
     is_muted: bool,
     pre_mute_config: Option<engine::EngineConfig>,
     peak_level: f32,
+    music_peak_level: f32,
     // Import/export
     export_text: String,
     import_text: String,
@@ -197,6 +198,7 @@ fn boot() -> (App, Task<Message>) {
             is_muted: false,
             pre_mute_config: None,
             peak_level: 0.0,
+            music_peak_level: 0.0,
             export_text: String::new(),
             import_text: String::new(),
             show_diagnostics: false,
@@ -413,9 +415,13 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             }
         },
         Message::Audio(e) => match e {
-            audio::Event::PeakLevel(level) => {
+            audio::Event::MicPeakLevel(level) => {
                 app.peak_level = level;
                 engine::set_peak_level(level);
+            }
+            audio::Event::MusicPeakLevel(level) => {
+                app.music_peak_level = level;
+                engine::set_music_peak_level(level);
             }
             audio::Event::MuteChanged(muted) => {
                 app.is_muted = muted;
@@ -1286,8 +1292,15 @@ fn view_diagnostics(app: &App) -> Element<'_, Message> {
         ]
         .spacing(8),
         row![
-            text("Peak level").size(11).color(OVERLAY0),
+            text("Mic level").size(11).color(OVERLAY0),
             text(format!("{:.0}%", app.peak_level * 100.0))
+                .size(11)
+                .color(SUBTEXT0),
+        ]
+        .spacing(8),
+        row![
+            text("Music level").size(11).color(OVERLAY0),
+            text(format!("{:.0}%", app.music_peak_level * 100.0))
                 .size(11)
                 .color(SUBTEXT0),
         ]

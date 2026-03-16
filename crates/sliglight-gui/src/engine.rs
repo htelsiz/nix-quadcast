@@ -48,18 +48,30 @@ impl Default for EngineConfig {
     }
 }
 
-/// Sender for peak level updates from the audio monitor.
-/// The engine reads this when in AudioReactive mode.
+/// Mic peak level — read by engine for AudioReactive mode.
 static PEAK_LEVEL: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
-/// Set peak level (called from audio subscription handler).
+/// Desktop audio peak level — read by engine for MusicReactive mode.
+static MUSIC_PEAK_LEVEL: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Set mic peak level (called from audio subscription handler).
 pub fn set_peak_level(peak: f32) {
     let bits = peak.clamp(0.0, 1.0).to_bits();
     PEAK_LEVEL.store(bits, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// Set desktop audio peak level (called from audio subscription handler).
+pub fn set_music_peak_level(peak: f32) {
+    let bits = peak.clamp(0.0, 1.0).to_bits();
+    MUSIC_PEAK_LEVEL.store(bits, std::sync::atomic::Ordering::Relaxed);
+}
+
 fn get_peak_level() -> f32 {
     f32::from_bits(PEAK_LEVEL.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+fn get_music_peak_level() -> f32 {
+    f32::from_bits(MUSIC_PEAK_LEVEL.load(std::sync::atomic::Ordering::Relaxed))
 }
 
 /// Always-on subscription — call once from `App::subscription()`.
@@ -116,10 +128,10 @@ fn engine_worker() -> impl iced::futures::Stream<Item = Event> {
                         anim = Animation::new(cfg.mode, cfg.colors, cfg.brightness, cfg.speed, cfg.zone);
                     }
                     _ = tokio::time::sleep(FRAME_INTERVAL) => {
-                        let new_frame = if anim_mode == Mode::AudioReactive {
-                            anim.audio_reactive_frame(get_peak_level())
-                        } else {
-                            anim.next_frame()
+                        let new_frame = match anim_mode {
+                            Mode::AudioReactive => anim.audio_reactive_frame(get_peak_level()),
+                            Mode::MusicReactive => anim.music_reactive_frame(get_music_peak_level()),
+                            _ => anim.next_frame(),
                         };
 
                         // Apply transition blend if active.

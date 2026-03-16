@@ -34,6 +34,7 @@ pub enum Mode {
     Lightning,
     Pulse,
     AudioReactive,
+    MusicReactive,
 }
 
 impl Mode {
@@ -45,6 +46,7 @@ impl Mode {
         Mode::Lightning,
         Mode::Pulse,
         Mode::AudioReactive,
+        Mode::MusicReactive,
     ];
 
     pub fn name(&self) -> &'static str {
@@ -56,6 +58,7 @@ impl Mode {
             Mode::Lightning => "lightning",
             Mode::Pulse => "pulse",
             Mode::AudioReactive => "audio",
+            Mode::MusicReactive => "music",
         }
     }
 
@@ -68,6 +71,7 @@ impl Mode {
             Mode::Lightning => "\u{26a1}",
             Mode::Pulse => "\u{2665}",
             Mode::AudioReactive => "\u{1f3a4}",
+            Mode::MusicReactive => "\u{1f3b5}",
         }
     }
 
@@ -80,6 +84,7 @@ impl Mode {
             Mode::Lightning => "Lightning strikes",
             Mode::Pulse => "Pulsing glow",
             Mode::AudioReactive => "VU meter reacting to mic input",
+            Mode::MusicReactive => "Color wave synced to desktop audio",
         }
     }
 
@@ -92,6 +97,7 @@ impl Mode {
             "lightning" => Some(Mode::Lightning),
             "pulse" => Some(Mode::Pulse),
             "audio" => Some(Mode::AudioReactive),
+            "music" => Some(Mode::MusicReactive),
             _ => None,
         }
     }
@@ -175,9 +181,9 @@ impl Animation {
             Mode::Wave => self.wave(),
             Mode::Lightning => self.lightning(),
             Mode::Pulse => self.pulse(),
-            // AudioReactive frames are built by the engine from peak level.
+            // AudioReactive/MusicReactive frames are built by the engine from peak level.
             // Fallback: solid at current brightness.
-            Mode::AudioReactive => self.solid(),
+            Mode::AudioReactive | Mode::MusicReactive => self.solid(),
         };
         self.apply_zone_mask(raw)
     }
@@ -201,6 +207,50 @@ impl Animation {
             .collect();
 
         self.apply_zone_mask(Frame { upper, lower })
+    }
+
+    /// Build a music-reactive frame from desktop audio peak level (0.0–1.0).
+    ///
+    /// Instead of a VU meter, this creates a color-breathing effect:
+    /// - At silence, LEDs show a dim base color
+    /// - As volume rises, brightness and saturation increase
+    /// - With multiple colors, the active color shifts with the beat
+    pub fn music_reactive_frame(&mut self, peak: f32) -> Frame {
+        let peak = peak.clamp(0.0, 1.0);
+
+        // Scale brightness with peak level (minimum 10% so LEDs are never fully off).
+        let dynamic_brightness = (10.0 + peak * 90.0) as u8;
+        let effective_brightness =
+            (self.brightness as f32 * dynamic_brightness as f32 / 100.0) as u8;
+
+        // Shift color based on cumulative energy — higher peaks advance faster.
+        if peak > 0.15 {
+            self.frame_num += 1;
+            if peak > 0.5 {
+                self.frame_num += 1;
+            }
+        }
+
+        let color_count = self.colors.len();
+        let idx = (self.frame_num / 8) % color_count;
+        let next_idx = (idx + 1) % color_count;
+        let blend_t = ((self.frame_num % 8) as f32 / 8.0).clamp(0.0, 1.0);
+
+        let base = lerp(self.colors[idx], self.colors[next_idx], blend_t);
+        let bright = apply_brightness(base, effective_brightness);
+
+        // Upper and lower zones get a slight phase offset for visual depth.
+        let lower_idx = (self.frame_num.wrapping_add(4) / 8) % color_count;
+        let lower_next = (lower_idx + 1) % color_count;
+        let lower_blend =
+            ((self.frame_num.wrapping_add(4) % 8) as f32 / 8.0).clamp(0.0, 1.0);
+        let lower_base = lerp(self.colors[lower_idx], self.colors[lower_next], lower_blend);
+        let lower_bright = apply_brightness(lower_base, effective_brightness);
+
+        self.apply_zone_mask(Frame {
+            upper: vec![bright; UPPER_COUNT],
+            lower: vec![lower_bright; LOWER_COUNT],
+        })
     }
 
     fn solid(&self) -> Frame {
