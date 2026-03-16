@@ -8,7 +8,7 @@ mod screen_lock;
 mod tray;
 
 use iced::widget::{
-    button, canvas::Canvas, column, container, pick_list, row, scrollable, slider, text,
+    button, canvas::Canvas, column, container, pick_list, row, slider, text,
     text_input, tooltip, Space,
 };
 use iced::{Background, Border, Color, Element, Length, Subscription, Task, Theme};
@@ -146,7 +146,6 @@ enum Message {
     SaveProfileAs,
     DeleteProfile,
     ProfileNameInput(String),
-    LoadPreset(String),
     ExportProfile,
     ImportProfile,
     CopyProfile,
@@ -351,13 +350,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::ProfileNameInput(s) => {
             app.profile_name_input = s;
-        }
-        Message::LoadPreset(name) => {
-            if let Some(profile) = app.config.profiles.get(&name).cloned() {
-                apply_profile(app, &profile);
-                app.config.active_profile = name;
-                push_config(app);
-            }
         }
         Message::ExportProfile => {
             let profile = current_profile(app);
@@ -662,7 +654,6 @@ fn view(app: &App) -> Element<'_, Message> {
         view_sliders(app),
         view_color_palette(app),
         Space::new().height(4),
-        view_presets(app),
         view_import(app),
         view_export(app),
         Space::new().height(Length::Fill),
@@ -1117,35 +1108,6 @@ fn channel_slider<'a>(
     .spacing(8)
     .align_y(iced::Alignment::Center)
     .into()
-}
-
-fn view_presets(app: &App) -> Element<'_, Message> {
-    let mut preset_names: Vec<String> = app.config.profiles.keys().cloned().collect();
-    preset_names.sort();
-
-    let preset_buttons: Vec<Element<'_, Message>> = preset_names
-        .into_iter()
-        .map(|name| {
-            let selected = name == app.config.active_profile;
-            let n = name.clone();
-            button(text(name).size(11).center())
-                .padding([4, 10])
-                .on_press(Message::LoadPreset(n))
-                .style(move |theme, status| pill_btn_style(theme, status, selected))
-                .into()
-        })
-        .collect();
-
-    let preset_row = scrollable(
-        row(preset_buttons)
-            .spacing(4)
-            .align_y(iced::Alignment::Center),
-    )
-    .direction(scrollable::Direction::Horizontal(
-        scrollable::Scrollbar::new().width(3).scroller_width(3),
-    ));
-
-    column![section_label("Presets"), preset_row].spacing(6).into()
 }
 
 fn view_export(app: &App) -> Element<'_, Message> {

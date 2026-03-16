@@ -15,7 +15,7 @@ A pure Rust application with a native GUI, CLI, and first-class NixOS integratio
 
 <img src="docs/screenshot.png" alt="Sliglight GUI" width="680" />
 
-*Live mic preview with per-zone control, animation modes, and inline color editing.*
+*Cyberpunk profile with Music mode — live mic preview, per-zone control, audio-reactive LEDs, and profiles.*
 
 </div>
 
@@ -29,11 +29,19 @@ It ships as a Nix flake with a NixOS module that handles udev rules, non-root US
 
 ## Features
 
-- **6 animation modes** -- Solid, Blink, Cycle, Wave, Lightning, Pulse
+- **8 animation modes** -- Solid, Blink, Cycle, Wave, Lightning, Pulse, Audio-reactive, Music-reactive
+- **Audio-reactive LEDs** -- mic input VU meter and desktop audio color-breathing synced to music via PipeWire/PulseAudio
+- **Mute indicator** -- LEDs flash red when mic is muted, restore on unmute
 - **Per-zone control** -- upper and lower LED rings (54 LEDs each, 108 total)
 - **Adjustable brightness and speed** -- fine-grained sliders for each parameter
 - **Up to 11 colors** -- full palette with inline hex RGB editor
 - **Live mic preview** -- real-time canvas rendering of current LED state
+- **Profiles** -- 13 built-in profiles (Catppuccin, Nord, Dracula, Gruvbox, etc.) plus custom save/copy/import/export
+- **Live updates** -- every control change takes effect instantly, no Apply button
+- **Config persistence** -- settings saved to `~/.config/sliglight/config.toml` (XDG compliant)
+- **DBus API** -- `org.sliglight.Daemon` for scripting and Waybar/i3blocks integration
+- **System tray** -- KDE StatusNotifierItem with profile switching, on/off toggle, mute status
+- **Screen lock blackout** -- LEDs turn off when screen locks, restore on unlock
 - **CLI for scripting** -- headless operation, suitable for cron jobs or shell scripts
 - **NixOS module** -- declarative configuration with udev rules and systemd service
 - **Catppuccin Mocha theme** -- native dark theme, no toolkit theming required
