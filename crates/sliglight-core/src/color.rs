@@ -59,6 +59,29 @@ pub fn flash_intensity(frame_num: i32, fade_in: i32, hold: i32, fade_out: i32) -
     0.0
 }
 
+/// Blend two frames together. `t` = 0.0 returns `a`, `t` = 1.0 returns `b`.
+pub fn blend_frames(
+    a: &sliglight_usb::Frame,
+    b: &sliglight_usb::Frame,
+    t: f32,
+) -> sliglight_usb::Frame {
+    let t = t.clamp(0.0, 1.0);
+    sliglight_usb::Frame {
+        upper: a
+            .upper
+            .iter()
+            .zip(b.upper.iter())
+            .map(|(ca, cb)| lerp(*ca, *cb, t))
+            .collect(),
+        lower: a
+            .lower
+            .iter()
+            .zip(b.lower.iter())
+            .map(|(ca, cb)| lerp(*ca, *cb, t))
+            .collect(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

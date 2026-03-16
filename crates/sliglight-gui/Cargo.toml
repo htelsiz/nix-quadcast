@@ -13,8 +13,12 @@ path = "src/main.rs"
 sliglight-usb = { path = "../sliglight-usb" }
 sliglight-core = { path = "../sliglight-core" }
 iced = { version = "0.14", features = ["canvas", "tokio", "svg", "image"] }
-tokio = { version = "1", features = ["time"] }
+tokio = { version = "1", features = ["time", "sync", "macros"] }
 resvg = "0.44"
 tiny-skia = "0.11"
+serde.workspace = true
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+ksni = "0.3"
+libpulse-binding = "2.30"
 log.workspace = true
 env_logger.workspace = true

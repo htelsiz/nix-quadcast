@@ -28,7 +28,26 @@ in
       type = lib.types.str;
       default = "solid";
       example = "cycle";
-      description = "RGB mode: solid, blink, cycle, wave, lightning, or pulse.";
+      description = "RGB mode: solid, blink, cycle, wave, lightning, pulse, or audio.";
+    };
+
+    profile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "Catppuccin Mocha";
+      description = ''
+        Named profile to activate when the GUI starts.
+        Overrides the last-used profile in the config file.
+        Must match a profile name in ~/.config/sliglight/config.toml.
+      '';
+    };
+
+    dbus.enable = lib.mkEnableOption "Sliglight DBus service (org.sliglight.Daemon)";
+
+    tray.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Show system tray icon when the GUI is running.";
     };
   };
 
@@ -47,6 +66,19 @@ in
         RestartSec = 3;
       };
     };
+
+    # DBus service file for org.sliglight.Daemon
+    services.dbus.packages = lib.mkIf cfg.dbus.enable [
+      (pkgs.writeTextFile {
+        name = "sliglight-dbus";
+        destination = "/share/dbus-1/services/org.sliglight.Daemon.service";
+        text = ''
+          [D-BUS Service]
+          Name=org.sliglight.Daemon
+          Exec=${sliglight}/bin/sliglight --dbus-only
+        '';
+      })
+    ];
 
     # udev rules for non-root USB HID access to QuadCast microphones.
     services.udev.extraRules = ''

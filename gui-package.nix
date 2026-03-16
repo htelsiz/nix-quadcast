@@ -2,6 +2,8 @@
   lib,
   rustPlatform,
   libusb1,
+  dbus,
+  libpulseaudio,
   pkg-config,
   cmake,
   makeWrapper,
@@ -64,7 +66,7 @@ rustPlatform.buildRustPackage {
     makeWrapper
   ];
 
-  buildInputs = [ libusb1 ] ++ runtimeLibs;
+  buildInputs = [ libusb1 dbus libpulseaudio ] ++ runtimeLibs;
 
   postInstall = ''
     mkdir -p $out/share/applications

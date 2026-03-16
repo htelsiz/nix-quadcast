@@ -3,6 +3,7 @@
 //! Each animation struct holds its state and implements `next_frame()`.
 //! The GUI/CLI calls `next_frame()` at ~30fps.
 
+use serde::{Deserialize, Serialize};
 use sliglight_usb::{Color, Frame, LOWER_COUNT, UPPER_COUNT};
 
 use crate::color::{
@@ -24,7 +25,7 @@ pub const RAINBOW: &[Color] = &[
 ];
 
 /// All supported animation modes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Mode {
     Solid,
     Blink,
@@ -32,6 +33,7 @@ pub enum Mode {
     Wave,
     Lightning,
     Pulse,
+    AudioReactive,
 }
 
 impl Mode {
@@ -42,6 +44,7 @@ impl Mode {
         Mode::Wave,
         Mode::Lightning,
         Mode::Pulse,
+        Mode::AudioReactive,
     ];
 
     pub fn name(&self) -> &'static str {
@@ -52,6 +55,7 @@ impl Mode {
             Mode::Wave => "wave",
             Mode::Lightning => "lightning",
             Mode::Pulse => "pulse",
+            Mode::AudioReactive => "audio",
         }
     }
 
@@ -63,6 +67,7 @@ impl Mode {
             Mode::Wave => "\u{2248}",
             Mode::Lightning => "\u{26a1}",
             Mode::Pulse => "\u{2665}",
+            Mode::AudioReactive => "\u{1f3a4}",
         }
     }
 
@@ -74,6 +79,7 @@ impl Mode {
             Mode::Wave => "Wave animation",
             Mode::Lightning => "Lightning strikes",
             Mode::Pulse => "Pulsing glow",
+            Mode::AudioReactive => "VU meter reacting to mic input",
         }
     }
 
@@ -85,6 +91,7 @@ impl Mode {
             "wave" => Some(Mode::Wave),
             "lightning" => Some(Mode::Lightning),
             "pulse" => Some(Mode::Pulse),
+            "audio" => Some(Mode::AudioReactive),
             _ => None,
         }
     }
@@ -97,7 +104,7 @@ impl std::fmt::Display for Mode {
 }
 
 /// Zone selection for LED masking.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Zone {
     Both,
     Upper,
@@ -168,8 +175,32 @@ impl Animation {
             Mode::Wave => self.wave(),
             Mode::Lightning => self.lightning(),
             Mode::Pulse => self.pulse(),
+            // AudioReactive frames are built by the engine from peak level.
+            // Fallback: solid at current brightness.
+            Mode::AudioReactive => self.solid(),
         };
         self.apply_zone_mask(raw)
+    }
+
+    /// Build a VU-meter frame from a peak level (0.0–1.0) and the current colors/brightness.
+    pub fn audio_reactive_frame(&self, peak: f32) -> Frame {
+        let peak = peak.clamp(0.0, 1.0);
+        let total_leds = UPPER_COUNT + LOWER_COUNT;
+        let lit_count = (peak * total_leds as f32).round() as usize;
+        let base_color = apply_brightness(self.colors[0], self.brightness);
+
+        // Lower LEDs light up first, then upper.
+        let lower: Vec<Color> = (0..LOWER_COUNT)
+            .map(|i| if i < lit_count.min(LOWER_COUNT) { base_color } else { BLACK })
+            .collect();
+        let upper: Vec<Color> = (0..UPPER_COUNT)
+            .map(|i| {
+                let global_i = LOWER_COUNT + i;
+                if global_i < lit_count { base_color } else { BLACK }
+            })
+            .collect();
+
+        self.apply_zone_mask(Frame { upper, lower })
     }
 
     fn solid(&self) -> Frame {
