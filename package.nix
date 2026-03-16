@@ -23,6 +23,9 @@ stdenv.mkDerivation {
     # Fix QuadCast 2S protocol: correct endpoint (0x06 not 0x07) + read ACK
     # responses from EP 0x85 between each packet (discovered via Wireshark capture)
     ./qs2s-protocol-fix.patch
+    # Remove self-daemonization — breaks libusb handles across fork/close-fds.
+    # On NixOS, systemd manages the process lifecycle instead.
+    ./no-daemonize.patch
   ];
 
   buildPhase = ''
