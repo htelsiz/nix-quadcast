@@ -17,6 +17,25 @@ in
       default = true;
       description = "Install the Qt6 GUI application for RGB control.";
     };
+
+    color = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "ff0000";
+      description = ''
+        Hex color to apply on boot via a systemd user service.
+        When set, a persistent `quadcast-rgb` service runs `quadcastrgb solid <color>`
+        continuously (the mic reverts to default rainbow if the process stops).
+        Set to null to disable the service.
+      '';
+    };
+
+    mode = lib.mkOption {
+      type = lib.types.str;
+      default = "solid";
+      example = "cycle";
+      description = "RGB mode: solid, blink, cycle, wave, lightning, or pulse.";
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -25,6 +44,18 @@ in
       ++ lib.optionals cfg.enableGui [
         (pkgs.callPackage ./gui-package.nix { inherit quadcastrgb; })
       ];
+
+    # Persistent systemd user service to keep RGB active
+    systemd.user.services.quadcast-rgb = lib.mkIf (cfg.color != null) {
+      description = "HyperX QuadCast RGB lighting";
+      wantedBy = [ "graphical-session.target" ];
+      after = [ "graphical-session.target" ];
+      serviceConfig = {
+        ExecStart = "${quadcastrgb}/bin/quadcastrgb ${cfg.mode} ${cfg.color}";
+        Restart = "on-failure";
+        RestartSec = 3;
+      };
+    };
 
     # udev rules for non-root USB HID access to QuadCast microphones.
     # TAG+="uaccess" grants the logged-in user full device control via systemd-logind,
