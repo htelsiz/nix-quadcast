@@ -1467,16 +1467,73 @@ const SYN_BOOL: Color =
     Color::from_rgb(0xCB as f32 / 255.0, 0xA6 as f32 / 255.0, 0xF7 as f32 / 255.0); // Mauve
 const SYN_PUNCT: Color = OVERLAY0;
 
+/// Compact JSON: collapse small arrays (e.g. color tuples) onto single lines.
+fn compact_json(json: &str) -> String {
+    let mut result = String::with_capacity(json.len());
+    let mut lines = json.lines().peekable();
+    while let Some(line) = lines.next() {
+        let trimmed = line.trim();
+        // Detect opening bracket of a small array (next lines are just numbers)
+        if trimmed.ends_with('[') {
+            let indent = &line[..line.len() - trimmed.len()];
+            let mut items: Vec<String> = Vec::new();
+            let mut found_close = false;
+            // Peek ahead to collect array items
+            let mut lookahead: Vec<&str> = Vec::new();
+            while let Some(&next) = lines.peek() {
+                let nt = next.trim();
+                if nt == "]" || nt == "]," {
+                    found_close = true;
+                    lookahead.push(lines.next().unwrap());
+                    break;
+                } else if nt.starts_with('{') || nt.starts_with('[') || nt.starts_with('"') {
+                    // Nested object/array/string — don't collapse
+                    break;
+                } else {
+                    lookahead.push(lines.next().unwrap());
+                    items.push(nt.trim_end_matches(',').to_string());
+                }
+            }
+            if found_close && items.len() <= 5 {
+                // Collapse: "colors": [235, 188, 186]
+                let close_trim = lookahead.last().unwrap().trim();
+                let trailing = if close_trim.ends_with(',') { "," } else { "" };
+                result.push_str(line);
+                result.push_str(&items.join(", "));
+                result.push(']');
+                result.push_str(trailing);
+                result.push('\n');
+            } else {
+                // Couldn't collapse — emit original lines
+                result.push_str(line);
+                result.push('\n');
+                for l in &lookahead {
+                    result.push_str(l);
+                    result.push('\n');
+                }
+            }
+            let _ = indent; // suppress warning
+        } else {
+            result.push_str(line);
+            result.push('\n');
+        }
+    }
+    result
+}
+
 /// Build syntax-highlighted JSON as a column of rich text rows.
 fn highlighted_json<'a>(json: &str) -> Element<'a, Message> {
+    let compact = compact_json(json);
     let mut lines: Vec<Element<'a, Message>> = Vec::new();
-    for line in json.lines() {
+    for line in compact.lines() {
         let mut spans: Vec<iced::widget::text::Span<'a, Font>> = Vec::new();
         let trimmed = line.trim_start();
         let indent = line.len() - trimmed.len();
         if indent > 0 {
             spans.push(iced::widget::text::Span {
                 text: " ".repeat(indent).into(),
+                font: Some(IOSEVKA),
+                size: Some(iced::Pixels(11.0)),
                 ..Default::default()
             });
         }
@@ -1486,9 +1543,8 @@ fn highlighted_json<'a>(json: &str) -> Element<'a, Message> {
         while let Some(&ch) = chars.peek() {
             match ch {
                 '"' => {
-                    // Collect the full quoted string
                     buf.clear();
-                    buf.push(chars.next().unwrap()); // opening "
+                    buf.push(chars.next().unwrap());
                     let mut escaped = false;
                     for c in chars.by_ref() {
                         buf.push(c);
@@ -1500,20 +1556,17 @@ fn highlighted_json<'a>(json: &str) -> Element<'a, Message> {
                             break;
                         }
                     }
-                    // Check if this is a key (followed by ':')
-                    let rest: String = trimmed
-                        .get(indent + spans.iter().map(|s| s.text.len()).sum::<usize>() + buf.len()..)
-                        .unwrap_or("")
-                        .chars()
-                        .take_while(|c| c.is_whitespace() || *c == ':')
-                        .collect();
-                    let is_key = rest.contains(':');
+                    // Look ahead to see if a colon follows (= this is a key)
+                    let is_key = chars.clone().take_while(|c| *c == ' ').count()
+                        + if chars.clone().skip_while(|c| *c == ' ').next() == Some(':') { 1 } else { 0 }
+                        > 0
+                        && chars.clone().skip_while(|c| *c == ' ').next() == Some(':');
                     let color = if is_key { SYN_KEY } else { SYN_STRING };
                     spans.push(iced::widget::text::Span {
                         text: buf.clone().into(),
                         color: Some(color),
                         font: Some(IOSEVKA),
-                        size: Some(iced::Pixels(12.0)),
+                        size: Some(iced::Pixels(11.0)),
                         ..Default::default()
                     });
                 }
@@ -1530,7 +1583,7 @@ fn highlighted_json<'a>(json: &str) -> Element<'a, Message> {
                         text: buf.clone().into(),
                         color: Some(SYN_NUMBER),
                         font: Some(IOSEVKA),
-                        size: Some(iced::Pixels(12.0)),
+                        size: Some(iced::Pixels(11.0)),
                         ..Default::default()
                     });
                 }
@@ -1547,7 +1600,7 @@ fn highlighted_json<'a>(json: &str) -> Element<'a, Message> {
                         text: buf.clone().into(),
                         color: Some(SYN_BOOL),
                         font: Some(IOSEVKA),
-                        size: Some(iced::Pixels(12.0)),
+                        size: Some(iced::Pixels(11.0)),
                         ..Default::default()
                     });
                 }
@@ -1556,17 +1609,15 @@ fn highlighted_json<'a>(json: &str) -> Element<'a, Message> {
                         text: chars.next().unwrap().to_string().into(),
                         color: Some(SYN_PUNCT),
                         font: Some(IOSEVKA),
-                        size: Some(iced::Pixels(12.0)),
+                        size: Some(iced::Pixels(11.0)),
                         ..Default::default()
                     });
                 }
                 _ => {
-                    // Whitespace or unknown — consume
                     spans.push(iced::widget::text::Span {
                         text: chars.next().unwrap().to_string().into(),
-                        color: Some(SUBTEXT0),
                         font: Some(IOSEVKA),
-                        size: Some(iced::Pixels(12.0)),
+                        size: Some(iced::Pixels(11.0)),
                         ..Default::default()
                     });
                 }
@@ -1575,51 +1626,55 @@ fn highlighted_json<'a>(json: &str) -> Element<'a, Message> {
         if spans.is_empty() {
             spans.push(iced::widget::text::Span {
                 text: " ".into(),
+                font: Some(IOSEVKA),
+                size: Some(iced::Pixels(11.0)),
                 ..Default::default()
             });
         }
-        let rich = iced::widget::rich_text(spans).font(IOSEVKA).size(12);
-        lines.push(rich.into());
+        lines.push(iced::widget::rich_text(spans).font(IOSEVKA).size(11).into());
     }
-    column(lines).spacing(1).into()
+    column(lines).spacing(0).into()
 }
 
 fn view_config_panel(app: &App) -> Element<'_, Message> {
     let json = app.config.to_json();
 
     let header = row![
-        text("Live Config").size(13).color(LAVENDER),
+        text("Live Config").size(12).color(LAVENDER),
         Space::new().width(Length::Fill),
         config_panel_btn("Copy", Message::CopyConfig, GREEN),
         config_panel_btn("Close", Message::ToggleConfigView, SUBTEXT0),
     ]
-    .spacing(6)
+    .spacing(4)
     .align_y(iced::Alignment::Center);
 
     let code_block = container(
         scrollable(
-            container(highlighted_json(&json)).padding([4, 0]),
+            container(highlighted_json(&json)).padding([6, 8]),
         )
         .height(Length::Fill)
         .style(|_theme: &Theme, _status| scrollable_style()),
     )
     .style(|_theme: &Theme| container::Style {
-        background: Some(Background::Color(BASE)),
+        background: Some(Background::Color(Color::from_rgb(
+            0x14 as f32 / 255.0,
+            0x14 as f32 / 255.0,
+            0x20 as f32 / 255.0,
+        ))),
         border: Border::default()
             .rounded(8)
             .width(1.0)
             .color(SURFACE0),
         ..container::Style::default()
     })
-    .padding([12, 14])
     .width(Length::Fill)
     .height(Length::Fill);
 
     container(
-        column![header, code_block].spacing(10),
+        column![header, code_block].spacing(8),
     )
-    .padding([24, 16])
-    .width(340)
+    .padding([16, 12])
+    .width(320)
     .height(Length::Fill)
     .into()
 }
