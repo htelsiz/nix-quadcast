@@ -34,7 +34,10 @@ python3Packages.buildPythonApplication {
 
   build-system = [ python3Packages.setuptools ];
 
-  dependencies = [ python3Packages.pyside6 ];
+  dependencies = [
+    python3Packages.pyside6
+    python3Packages.libusb1
+  ];
 
   nativeBuildInputs = [
     qt6.wrapQtAppsHook
