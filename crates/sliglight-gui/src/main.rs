@@ -16,8 +16,24 @@ fn main() -> iced::Result {
         .title("Sliglight")
         .theme(Theme::CatppuccinMocha)
         .subscription(subscription)
-        .window_size((900.0, 750.0))
+        .window(iced::window::Settings {
+            size: iced::Size::new(900.0, 750.0),
+            icon: load_icon(),
+            ..Default::default()
+        })
         .run()
+}
+
+fn load_icon() -> Option<iced::window::icon::Icon> {
+    let svg_data = include_bytes!("../../../resources/sliglight.svg");
+    let tree = resvg::usvg::Tree::from_data(svg_data, &resvg::usvg::Options::default()).ok()?;
+    let size = 64u32;
+    let mut pixmap = tiny_skia::Pixmap::new(size, size)?;
+    let svg_size = tree.size();
+    let scale = size as f32 / svg_size.width().max(svg_size.height());
+    let transform = tiny_skia::Transform::from_scale(scale, scale);
+    resvg::render(&tree, transform, &mut pixmap.as_mut());
+    iced::window::icon::from_rgba(pixmap.data().to_vec(), size, size).ok()
 }
 
 /// Default LED preview color (dark gray, matches unlit mic).
