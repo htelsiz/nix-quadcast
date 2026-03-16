@@ -21,10 +21,13 @@ stdenv.mkDerivation {
   # GCC 15+ treats this as an error by default.
   env.NIX_CFLAGS_COMPILE = "-Wno-incompatible-pointer-types";
 
-  # Fix upstream bugs in device detection:
+  # Patches for upstream bugs and improvements:
   # 1. Typo: "desc" should be "descr" (undeclared variable)
   # 2. QuadCast 2S PID 0x02b5 only checked under VID 0x0951 (Kingston),
   #    but HP-branded units report VID 0x03f0. Add 0x02b5 to EU check too.
+  # 3. claim_dev_interface gives up on LIBUSB_ERROR_BUSY instead of resetting
+  #    the USB device and retrying. This makes RGB control fail whenever any
+  #    other program (Wine, PipeWire, etc.) has touched the HID interfaces.
   postPatch = ''
     substituteInPlace modules/devio.c \
       --replace-fail "desc.idProduct" "descr.idProduct"
@@ -33,6 +36,52 @@ stdenv.mkDerivation {
       --replace-fail \
         "descr.idProduct == DEV_PID_DUOCAST)" \
         "descr.idProduct == DEV_PID_DUOCAST || descr.idProduct == DEV_PID_NA3)"
+
+    substituteInPlace modules/devio.c \
+      --replace-fail \
+        'static int claim_dev_interface(libusb_device_handle *handle)
+{
+    int errcode0, errcode1;
+    libusb_set_auto_detach_kernel_driver(handle, 1); /* might be unsupported */
+    errcode0 = libusb_claim_interface(handle, 0);
+    errcode1 = libusb_claim_interface(handle, 1);
+    if(errcode0 == LIBUSB_ERROR_BUSY || errcode1 == LIBUSB_ERROR_BUSY) {
+        fprintf(stderr, BUSY_ERR_MSG);
+        return 1;
+    } else if(errcode0 == LIBUSB_ERROR_NO_DEVICE ||
+                                          errcode1 == LIBUSB_ERROR_NO_DEVICE) {
+        fprintf(stderr, OPEN_ERR_MSG);
+        return 1;
+    }
+    return 0;
+}' \
+        'static int claim_dev_interface(libusb_device_handle *handle)
+{
+    int errcode0, errcode1;
+    libusb_set_auto_detach_kernel_driver(handle, 1);
+    errcode0 = libusb_claim_interface(handle, 0);
+    errcode1 = libusb_claim_interface(handle, 1);
+    if(errcode0 == LIBUSB_ERROR_BUSY || errcode1 == LIBUSB_ERROR_BUSY) {
+        /* Reset the USB device to clear stale claims from other programs */
+        libusb_release_interface(handle, 0);
+        libusb_release_interface(handle, 1);
+        if(libusb_reset_device(handle) == 0) {
+            libusb_set_auto_detach_kernel_driver(handle, 1);
+            errcode0 = libusb_claim_interface(handle, 0);
+            errcode1 = libusb_claim_interface(handle, 1);
+        }
+        if(errcode0 == LIBUSB_ERROR_BUSY || errcode1 == LIBUSB_ERROR_BUSY) {
+            fprintf(stderr, BUSY_ERR_MSG);
+            return 1;
+        }
+    }
+    if(errcode0 == LIBUSB_ERROR_NO_DEVICE ||
+                                          errcode1 == LIBUSB_ERROR_NO_DEVICE) {
+        fprintf(stderr, OPEN_ERR_MSG);
+        return 1;
+    }
+    return 0;
+}'
   '';
 
   buildPhase = ''
