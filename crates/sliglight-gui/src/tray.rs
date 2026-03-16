@@ -1,11 +1,12 @@
 //! System tray icon via KDE StatusNotifierItem (ksni).
 //!
 //! Shows a tray icon with a menu for profile switching and app control.
+//! Uses the app's own SVG rendered to ARGB32 pixmap for a custom icon.
 
 use iced::futures::SinkExt;
 use iced::Subscription;
 use ksni::menu::StandardItem;
-use ksni::{Tray, TrayMethods};
+use ksni::{Icon, Tray, TrayMethods};
 use tokio::sync::{mpsc, watch};
 
 /// Commands from tray menu → App.
@@ -43,8 +44,46 @@ impl Default for TrayState {
     }
 }
 
+/// Render the embedded SVG to an ARGB32 pixmap for the tray icon.
+fn render_tray_icon() -> Icon {
+    let svg_data = include_bytes!("../../../resources/sliglight.svg");
+    let size = 48i32;
+    let tree = resvg::usvg::Tree::from_data(svg_data, &resvg::usvg::Options::default())
+        .expect("embedded SVG must parse");
+    let mut pixmap =
+        tiny_skia::Pixmap::new(size as u32, size as u32).expect("pixmap allocation");
+    let svg_size = tree.size();
+    let scale = size as f32 / svg_size.width().max(svg_size.height());
+    let transform = tiny_skia::Transform::from_scale(scale, scale);
+    resvg::render(&tree, transform, &mut pixmap.as_mut());
+
+    // tiny_skia gives us premultiplied RGBA. ksni wants ARGB32 in network byte order
+    // (big-endian), so each pixel is [A, R, G, B].
+    let rgba = pixmap.data();
+    let mut argb = Vec::with_capacity(rgba.len());
+    for pixel in rgba.chunks_exact(4) {
+        let (r, g, b, a) = (pixel[0], pixel[1], pixel[2], pixel[3]);
+        // Un-premultiply if alpha > 0.
+        if a == 0 {
+            argb.extend_from_slice(&[0, 0, 0, 0]);
+        } else {
+            let ur = ((r as u16 * 255) / a as u16).min(255) as u8;
+            let ug = ((g as u16 * 255) / a as u16).min(255) as u8;
+            let ub = ((b as u16 * 255) / a as u16).min(255) as u8;
+            argb.extend_from_slice(&[a, ur, ug, ub]);
+        }
+    }
+
+    Icon {
+        width: size,
+        height: size,
+        data: argb,
+    }
+}
+
 struct SliglightTray {
     state: TrayState,
+    icon: Icon,
     command_tx: mpsc::Sender<Command>,
 }
 
@@ -57,14 +96,8 @@ impl Tray for SliglightTray {
         "Sliglight".into()
     }
 
-    fn icon_name(&self) -> String {
-        if !self.state.is_connected {
-            "audio-input-microphone-muted".into()
-        } else if self.state.is_on {
-            "audio-input-microphone".into()
-        } else {
-            "audio-input-microphone-muted".into()
-        }
+    fn icon_pixmap(&self) -> Vec<Icon> {
+        vec![self.icon.clone()]
     }
 
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
@@ -149,6 +182,7 @@ fn tray_worker() -> impl iced::futures::Stream<Item = Event> {
 
         let tray = SliglightTray {
             state: TrayState::default(),
+            icon: render_tray_icon(),
             command_tx,
         };
 
