@@ -3,7 +3,7 @@
 mod engine;
 mod mic_preview;
 
-use iced::widget::{button, canvas::Canvas, column, container, row, slider, text, Space};
+use iced::widget::{button, canvas::Canvas, column, container, row, slider, text, text_input, Space};
 use iced::{Background, Border, Color, Element, Length, Subscription, Task, Theme};
 
 use mic_preview::MicPreview;
@@ -62,6 +62,7 @@ struct App {
     speed: u8,
     colors: Vec<(u8, u8, u8)>,
     editing_color: Option<usize>,
+    hex_input: String,
     status: Status,
     engine: Option<engine::Handle>,
     upper_preview_color: Color,
@@ -85,6 +86,7 @@ enum Message {
     #[allow(dead_code)]
     SetColor(usize, (u8, u8, u8)),
     ToggleColorEditor(usize),
+    HexInputChanged(String),
     SetColorR(u8),
     SetColorG(u8),
     SetColorB(u8),
@@ -102,6 +104,7 @@ fn boot() -> (App, Task<Message>) {
             speed: 81,
             colors: vec![(255, 0, 0)],
             editing_color: None,
+            hex_input: String::new(),
             status: Status::Idle,
             engine: None,
             upper_preview_color: DEFAULT_PREVIEW,
@@ -157,12 +160,38 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 app.editing_color = None;
             } else if i < app.colors.len() {
                 app.editing_color = Some(i);
+                let (r, g, b) = app.colors[i];
+                app.hex_input = format!("{r:02X}{g:02X}{b:02X}");
+            }
+        }
+        Message::HexInputChanged(s) => {
+            let cleaned: String = s
+                .chars()
+                .filter(|c| c.is_ascii_hexdigit())
+                .take(6)
+                .map(|c| c.to_ascii_uppercase())
+                .collect();
+            app.hex_input = cleaned;
+            if app.hex_input.len() == 6 {
+                if let (Ok(r), Ok(g), Ok(b)) = (
+                    u8::from_str_radix(&app.hex_input[0..2], 16),
+                    u8::from_str_radix(&app.hex_input[2..4], 16),
+                    u8::from_str_radix(&app.hex_input[4..6], 16),
+                ) {
+                    if let Some(idx) = app.editing_color {
+                        if idx < app.colors.len() {
+                            app.colors[idx] = (r, g, b);
+                        }
+                    }
+                }
             }
         }
         Message::SetColorR(v) => {
             if let Some(idx) = app.editing_color {
                 if idx < app.colors.len() {
                     app.colors[idx].0 = v;
+                    let (r, g, b) = app.colors[idx];
+                    app.hex_input = format!("{r:02X}{g:02X}{b:02X}");
                 }
             }
         }
@@ -170,6 +199,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             if let Some(idx) = app.editing_color {
                 if idx < app.colors.len() {
                     app.colors[idx].1 = v;
+                    let (r, g, b) = app.colors[idx];
+                    app.hex_input = format!("{r:02X}{g:02X}{b:02X}");
                 }
             }
         }
@@ -177,6 +208,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             if let Some(idx) = app.editing_color {
                 if idx < app.colors.len() {
                     app.colors[idx].2 = v;
+                    let (r, g, b) = app.colors[idx];
+                    app.hex_input = format!("{r:02X}{g:02X}{b:02X}");
                 }
             }
         }
@@ -198,6 +231,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             app.speed = 81;
             app.colors = vec![(255, 0, 0)];
             app.editing_color = None;
+            app.hex_input = String::new();
             app.engine = None;
             app.status = Status::Idle;
             app.upper_preview_color = DEFAULT_PREVIEW;
@@ -375,108 +409,51 @@ fn view_sliders(app: &App) -> Element<'_, Message> {
 }
 
 fn view_color_palette(app: &App) -> Element<'_, Message> {
-    // --- Color Strip: circular swatches in a uniform row ---
-    let mut swatches: Vec<Element<'_, Message>> = Vec::new();
+    // Color chips: uniform rounded squares
+    let mut chips: Vec<Element<'_, Message>> = app
+        .colors
+        .iter()
+        .enumerate()
+        .map(|(i, &(r, g, b))| color_chip(i, r, g, b, app.editing_color == Some(i)))
+        .collect();
 
-    for (i, &(r, g, b)) in app.colors.iter().enumerate() {
-        let is_selected = app.editing_color == Some(i);
-        swatches.push(color_swatch(i, r, g, b, is_selected));
-    }
-
-    // Add button — same size circle, dashed-border feel
     if app.colors.len() < 11 {
-        let add_btn = button(
-            container(text("+").size(14).center().color(OVERLAY0))
-                .width(36)
-                .height(36)
-                .center_x(Length::Fill)
-                .center_y(Length::Fill),
-        )
-        .padding(0)
-        .on_press(Message::AddColor)
-        .style(|_theme, status| {
-            let border_col = if status == button::Status::Hovered { LAVENDER } else { SURFACE1 };
-            button::Style {
-                background: Some(Background::Color(Color::TRANSPARENT)),
-                border: Border::default().rounded(20).width(1.5).color(border_col),
-                ..button::Style::default()
-            }
-        });
-        // Wrap in same-size container as swatches for alignment
-        swatches.push(
-            container(add_btn)
-                .width(42)
-                .height(42)
-                .center_x(Length::Fill)
-                .center_y(Length::Fill)
-                .into(),
-        );
+        chips.push(add_chip());
     }
 
-    let strip = row(swatches)
-        .spacing(8)
-        .align_y(iced::Alignment::Center);
+    let chip_row = row(chips).spacing(6).align_y(iced::Alignment::Center);
+    let mut content = column![section_label("Colors"), chip_row].spacing(8);
 
-    let mut palette = column![section_label("Colors"), strip].spacing(8);
-
-    // --- Control Deck: appears below strip when a color is selected ---
+    // Editor card appears below when a color is selected
     if let Some(idx) = app.editing_color {
         if idx < app.colors.len() {
-            let can_remove = app.colors.len() > 1 && idx > 0;
-            palette = palette.push(view_color_deck(app.colors[idx], idx, can_remove));
+            content = content.push(view_color_editor(app, idx));
         }
     }
 
-    palette.into()
+    content.into()
 }
 
-/// A single circular color swatch with glow ring when selected.
-fn color_swatch(index: usize, r: u8, g: u8, b: u8, selected: bool) -> Element<'static, Message> {
+/// Uniform rounded-square color chip.
+fn color_chip(index: usize, r: u8, g: u8, b: u8, selected: bool) -> Element<'static, Message> {
     let color = Color::from_rgb8(r, g, b);
-
-    // Inner circle — the actual color
-    let inner = container(Space::new().width(36).height(36))
-        .style(move |_theme: &Theme| container::Style {
+    let chip = container(Space::new().width(32).height(32)).style(move |_theme: &Theme| {
+        let border = if selected {
+            Border::default().rounded(6).width(2.0).color(LAVENDER)
+        } else {
+            Border::default().rounded(6).width(1.0).color(SURFACE1)
+        };
+        container::Style {
             background: Some(Background::Color(color)),
-            border: Border::default().rounded(18),
+            border,
             ..container::Style::default()
-        });
+        }
+    });
 
-    // Outer wrapper — adds glow ring when selected
-    let outer_size = 42;
-    let swatch_container = if selected {
-        // Glow ring: accent-colored container slightly larger than the swatch
-        container(
-            container(inner)
-                .center_x(Length::Fill)
-                .center_y(Length::Fill),
-        )
-        .width(outer_size)
-        .height(outer_size)
-        .style(move |_theme: &Theme| container::Style {
-            background: Some(Background::Color(LAVENDER)),
-            border: Border::default().rounded(21),
-            ..container::Style::default()
-        })
-    } else {
-        container(
-            container(inner)
-                .center_x(Length::Fill)
-                .center_y(Length::Fill),
-        )
-        .width(outer_size)
-        .height(outer_size)
-        .style(|_theme: &Theme| container::Style {
-            background: Some(Background::Color(Color::TRANSPARENT)),
-            border: Border::default().rounded(21),
-            ..container::Style::default()
-        })
-    };
-
-    button(swatch_container)
+    button(chip)
         .padding(0)
         .on_press(Message::ToggleColorEditor(index))
-        .style(|_theme, _status| button::Style {
+        .style(|_theme: &Theme, _status| button::Style {
             background: None,
             border: Border::default(),
             ..button::Style::default()
@@ -484,85 +461,131 @@ fn color_swatch(index: usize, r: u8, g: u8, b: u8, selected: bool) -> Element<'s
         .into()
 }
 
-/// The Control Deck — contextual editor panel below the color strip.
-fn view_color_deck(
-    (r, g, b): (u8, u8, u8),
-    _index: usize,
-    can_remove: bool,
-) -> Element<'static, Message> {
-    // Large color preview circle
-    let preview = container(Space::new().width(56).height(56))
-        .style(move |_theme: &Theme| container::Style {
+/// "+" chip matching swatch size.
+fn add_chip() -> Element<'static, Message> {
+    button(
+        container(text("+").size(14).center().color(OVERLAY0))
+            .width(32)
+            .height(32)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill),
+    )
+    .padding(0)
+    .on_press(Message::AddColor)
+    .style(|_theme: &Theme, status| {
+        let border_col = if status == button::Status::Hovered {
+            LAVENDER
+        } else {
+            SURFACE1
+        };
+        button::Style {
+            background: Some(Background::Color(Color::TRANSPARENT)),
+            border: Border::default().rounded(6).width(1.0).color(border_col),
+            ..button::Style::default()
+        }
+    })
+    .into()
+}
+
+/// Color editor card with hex input, RGB sliders, and remove button.
+fn view_color_editor(app: &App, idx: usize) -> Element<'_, Message> {
+    let (r, g, b) = app.colors[idx];
+    let can_remove = app.colors.len() > 1;
+
+    // Color preview swatch
+    let preview = container(Space::new().width(40).height(40)).style(
+        move |_theme: &Theme| container::Style {
             background: Some(Background::Color(Color::from_rgb8(r, g, b))),
-            border: Border::default().rounded(28),
+            border: Border::default().rounded(8),
             ..container::Style::default()
+        },
+    );
+
+    // Hex input: "#" label + text field
+    let hex_field = text_input("000000", &app.hex_input)
+        .on_input(Message::HexInputChanged)
+        .size(14)
+        .width(80)
+        .style(|_theme: &Theme, status| {
+            let border_col = match status {
+                text_input::Status::Focused { .. } => LAVENDER,
+                text_input::Status::Hovered => SURFACE2,
+                _ => SURFACE1,
+            };
+            text_input::Style {
+                background: Background::Color(SURFACE0),
+                border: Border::default().rounded(6).width(1.0).color(border_col),
+                icon: SUBTEXT0,
+                placeholder: OVERLAY0,
+                value: TEXT,
+                selection: LAVENDER,
+            }
         });
 
-    let hex_code = text(format!("#{r:02X}{g:02X}{b:02X}"))
-        .size(12)
-        .color(SUBTEXT0);
+    let hex_row = row![text("#").size(14).color(SUBTEXT0), hex_field]
+        .spacing(2)
+        .align_y(iced::Alignment::Center);
 
-    let preview_col = column![preview, hex_code]
-        .spacing(6)
-        .align_x(iced::Alignment::Center);
-
-    // Channel sliders with value readout
-    let r_slider = channel_slider("R", r, RED, Message::SetColorR);
-    let g_slider = channel_slider("G", g, GREEN, Message::SetColorG);
-    let b_slider = channel_slider("B", b, LAVENDER, Message::SetColorB);
-
-    let sliders = column![r_slider, g_slider, b_slider]
-        .spacing(6)
-        .width(Length::Fill);
-
-    // Bottom row: remove button (right-aligned, only if removable)
-    let bottom: Element<'_, Message> = if can_remove {
-        container(
+    // Top row: preview + hex + spacer + optional remove
+    let top_row: Element<'_, Message> = if can_remove {
+        row![
+            preview,
+            hex_row,
+            Space::new().width(Length::Fill),
             button(text("Remove").size(11).center().color(RED))
-                .padding([4, 14])
-                .on_press(Message::RemoveColor(_index))
+                .padding([4, 12])
+                .on_press(Message::RemoveColor(idx))
                 .style(|_theme: &Theme, status| {
                     let bg = if status == button::Status::Hovered {
-                        Color { a: 0.15, ..RED }
+                        Color { a: 0.12, ..RED }
                     } else {
                         Color::TRANSPARENT
                     };
                     button::Style {
                         background: Some(Background::Color(bg)),
-                        border: Border::default().rounded(6).width(1.0).color(
-                            Color { a: 0.3, ..RED },
-                        ),
+                        border: Border::default()
+                            .rounded(6)
+                            .width(1.0)
+                            .color(Color { a: 0.25, ..RED }),
                         ..button::Style::default()
                     }
                 }),
-        )
-        .width(Length::Fill)
-        .align_x(iced::Alignment::End)
+        ]
+        .spacing(12)
+        .align_y(iced::Alignment::Center)
         .into()
     } else {
-        Space::new().height(0).into()
+        row![preview, hex_row]
+            .spacing(12)
+            .align_y(iced::Alignment::Center)
+            .into()
     };
 
-    let content = column![
-        row![preview_col, sliders]
-            .spacing(16)
-            .align_y(iced::Alignment::Center),
-        bottom,
+    // RGB channel sliders
+    let sliders = column![
+        channel_slider("R", r, RED, Message::SetColorR),
+        channel_slider("G", g, GREEN, Message::SetColorG),
+        channel_slider("B", b, LAVENDER, Message::SetColorB),
     ]
-    .spacing(8);
+    .spacing(4);
+
+    let content = column![top_row, sliders].spacing(12);
 
     container(content)
         .style(|_theme: &Theme| container::Style {
             background: Some(Background::Color(MANTLE)),
-            border: Border::default().rounded(12).width(1.0).color(SURFACE0),
+            border: Border::default()
+                .rounded(10)
+                .width(1.0)
+                .color(SURFACE0),
             ..container::Style::default()
         })
-        .padding([14, 16])
+        .padding([12, 14])
         .width(Length::Fill)
         .into()
 }
 
-/// A single RGB channel slider row: label, slider, value.
+/// Single RGB channel slider: label, slider bar, numeric value.
 fn channel_slider<'a>(
     label: &'a str,
     value: u8,
@@ -572,7 +595,10 @@ fn channel_slider<'a>(
     row![
         text(label).size(12).color(color).width(16),
         slider(0..=255, value, on_change).width(Length::Fill),
-        text(format!("{value:>3}")).size(11).color(SUBTEXT0).width(28),
+        text(format!("{value:>3}"))
+            .size(11)
+            .color(SUBTEXT0)
+            .width(28),
     ]
     .spacing(8)
     .align_y(iced::Alignment::Center)
