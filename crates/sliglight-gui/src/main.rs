@@ -83,7 +83,7 @@ fn scrollable_style() -> scrollable::Style {
         border: Border::default(),
         scroller: scrollable::Scroller {
             background: Background::Color(SURFACE1),
-            border: Border::default().rounded(4),
+            border: Border::default().rounded(3),
         },
     };
     scrollable::Style {
@@ -739,6 +739,7 @@ fn view(app: &App) -> Element<'_, Message> {
         .padding([20, 24])
         .width(Length::Fill),
     )
+    .spacing(4)
     .style(|_theme: &Theme, _status| scrollable_style());
 
     // Vertical separator between mic and controls
@@ -1611,10 +1612,10 @@ fn view_config_panel(app: &App) -> Element<'_, Message> {
     .align_y(iced::Alignment::Center);
 
     let code_block = scrollable(
-        // Right padding 14px gives scrollbar its own lane
-        container(highlighted_json(&json)).padding(Padding { top: 8.0, right: 14.0, bottom: 8.0, left: 10.0 }),
+        container(highlighted_json(&json)).padding([8, 10]),
     )
     .height(Length::Fill)
+    .spacing(4)
     .style(|_theme: &Theme, _status| scrollable_style());
 
     container(
