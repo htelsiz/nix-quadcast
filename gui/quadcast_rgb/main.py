@@ -1,6 +1,10 @@
 """QuadCast RGB GUI — Qt6 controller for HyperX QuadCast microphone RGB."""
 
+import os
 import sys
+
+# Force Qt's built-in dialogs instead of KDE native ones (which ignore our dark theme)
+os.environ["QT_QPA_PLATFORMTHEME"] = ""
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QRadialGradient, QPalette

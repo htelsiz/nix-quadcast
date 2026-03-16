@@ -57,14 +57,21 @@ def apply(
     """Apply RGB settings. Returns (success, output)."""
     cmd = build_command(mode, colors, brightness, speed, zone)
     try:
+        # quadcastrgb daemonizes (forks to background) to send packets.
+        # Don't capture stdout/stderr — the forked child inherits pipes and
+        # would keep subprocess.run blocking until timeout kills it.
+        # Use start_new_session so the daemon isn't killed with our process.
         result = subprocess.run(
             cmd,
-            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=5,
+            timeout=10,
+            start_new_session=True,
         )
         if result.returncode == 0:
-            return True, result.stdout or "Applied successfully"
+            return True, "Applied successfully"
         return False, result.stderr or f"Exit code {result.returncode}"
     except FileNotFoundError:
         return False, "quadcastrgb not found in PATH"
