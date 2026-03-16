@@ -27,18 +27,21 @@ in
       ];
 
     # udev rules for non-root USB HID access to QuadCast microphones.
+    # TAG+="uaccess" grants the logged-in user full device control via systemd-logind,
+    # which is required for libusb_set_auto_detach_kernel_driver() to work (needs
+    # USBDEVFS_DISCONNECT ioctl permission to unbind usbhid from control interfaces).
     # Covers Kingston (0951) and HP (03f0) vendor IDs across all known models.
     services.udev.extraRules = ''
       # HyperX QuadCast S (Kingston)
-      SUBSYSTEM=="usb", ATTR{idVendor}=="0951", ATTR{idProduct}=="171f", MODE="0666"
+      SUBSYSTEM=="usb", ATTR{idVendor}=="0951", ATTR{idProduct}=="171f", MODE="0666", TAG+="uaccess"
       # HyperX QuadCast 2S / DuoCast (HP)
-      SUBSYSTEM=="usb", ATTR{idVendor}=="03f0", ATTR{idProduct}=="0f8b", MODE="0666"
-      SUBSYSTEM=="usb", ATTR{idVendor}=="03f0", ATTR{idProduct}=="028c", MODE="0666"
-      SUBSYSTEM=="usb", ATTR{idVendor}=="03f0", ATTR{idProduct}=="048c", MODE="0666"
-      SUBSYSTEM=="usb", ATTR{idVendor}=="03f0", ATTR{idProduct}=="068c", MODE="0666"
-      SUBSYSTEM=="usb", ATTR{idVendor}=="03f0", ATTR{idProduct}=="098c", MODE="0666"
-      SUBSYSTEM=="usb", ATTR{idVendor}=="03f0", ATTR{idProduct}=="02b5", MODE="0666"
-      SUBSYSTEM=="usb", ATTR{idVendor}=="03f0", ATTR{idProduct}=="0d84", MODE="0666"
+      SUBSYSTEM=="usb", ATTR{idVendor}=="03f0", ATTR{idProduct}=="0f8b", MODE="0666", TAG+="uaccess"
+      SUBSYSTEM=="usb", ATTR{idVendor}=="03f0", ATTR{idProduct}=="028c", MODE="0666", TAG+="uaccess"
+      SUBSYSTEM=="usb", ATTR{idVendor}=="03f0", ATTR{idProduct}=="048c", MODE="0666", TAG+="uaccess"
+      SUBSYSTEM=="usb", ATTR{idVendor}=="03f0", ATTR{idProduct}=="068c", MODE="0666", TAG+="uaccess"
+      SUBSYSTEM=="usb", ATTR{idVendor}=="03f0", ATTR{idProduct}=="098c", MODE="0666", TAG+="uaccess"
+      SUBSYSTEM=="usb", ATTR{idVendor}=="03f0", ATTR{idProduct}=="02b5", MODE="0666", TAG+="uaccess"
+      SUBSYSTEM=="usb", ATTR{idVendor}=="03f0", ATTR{idProduct}=="0d84", MODE="0666", TAG+="uaccess"
     '';
   };
 }
