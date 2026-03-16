@@ -11,7 +11,7 @@ use iced::widget::{
     button, canvas::Canvas, column, container, pick_list, row, scrollable, slider, text,
     text_input, tooltip, Space,
 };
-use iced::{Background, Border, Color, Element, Font, Length, Shadow, Subscription, Task, Theme};
+use iced::{Background, Border, Color, Element, Font, Length, Padding, Shadow, Subscription, Task, Theme};
 
 use mic_preview::MicPreview;
 
@@ -128,7 +128,7 @@ fn main() -> iced::Result {
         .theme(Theme::CatppuccinMocha)
         .subscription(subscription)
         .window(iced::window::Settings {
-            size: iced::Size::new(920.0, 740.0),
+            size: iced::Size::new(1100.0, 740.0),
             icon: load_icon(),
             ..Default::default()
         })
@@ -182,7 +182,6 @@ struct App {
     import_text: String,
     // Diagnostics
     show_diagnostics: bool,
-    show_config: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -220,7 +219,6 @@ enum Message {
     ImportTomlInput(String),
     // Diagnostics
     ToggleDiagnostics,
-    ToggleConfigView,
     CopyConfig,
     // Engine
     Engine(engine::Event),
@@ -269,7 +267,6 @@ fn boot() -> (App, Task<Message>) {
             export_text: String::new(),
             import_text: String::new(),
             show_diagnostics: false,
-            show_config: false,
             config,
         },
         Task::none(),
@@ -446,9 +443,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::ToggleDiagnostics => {
             app.show_diagnostics = !app.show_diagnostics;
-        }
-        Message::ToggleConfigView => {
-            app.show_config = !app.show_config;
         }
         Message::CopyConfig => {
             return iced::clipboard::write(app.config.to_json());
@@ -759,21 +753,18 @@ fn view(app: &App) -> Element<'_, Message> {
     .padding([40, 0])
     .height(Length::Fill);
 
-    let mut main_row = row![mic, separator, controls];
+    let sep2 = container(
+        container(Space::new().width(1).height(Length::Fill)).style(
+            |_theme: &Theme| container::Style {
+                background: Some(Background::Color(SURFACE0)),
+                ..container::Style::default()
+            },
+        ),
+    )
+    .padding([40, 0])
+    .height(Length::Fill);
 
-    if app.show_config {
-        let sep2 = container(
-            container(Space::new().width(1).height(Length::Fill)).style(
-                |_theme: &Theme| container::Style {
-                    background: Some(Background::Color(SURFACE0)),
-                    ..container::Style::default()
-                },
-            ),
-        )
-        .padding([40, 0])
-        .height(Length::Fill);
-        main_row = main_row.push(sep2).push(view_config_panel(app));
-    }
+    let main_row = row![mic, separator, controls, sep2, view_config_panel(app)];
 
     container(main_row)
         .style(|_theme: &Theme| container::Style {
@@ -1300,36 +1291,8 @@ fn view_diagnostics(app: &App) -> Element<'_, Message> {
         }
     });
 
-    let config_btn = button(
-        text(if app.show_config {
-            "Hide Config"
-        } else {
-            "Config"
-        })
-        .size(11)
-        .center()
-        .color(SUBTEXT0),
-    )
-    .padding([4, 10])
-    .on_press(Message::ToggleConfigView)
-    .style(|_theme: &Theme, status| {
-        let bg = if status == button::Status::Hovered {
-            SURFACE1
-        } else {
-            Color::TRANSPARENT
-        };
-        button::Style {
-            background: Some(Background::Color(bg)),
-            border: Border::default()
-                .rounded(6)
-                .width(1.0)
-                .color(SURFACE1),
-            ..button::Style::default()
-        }
-    });
-
     if !app.show_diagnostics {
-        return row![toggle_btn, config_btn].spacing(6).into();
+        return toggle_btn.into();
     }
 
     let connected_str = match &app.connection {
@@ -1406,7 +1369,7 @@ fn view_diagnostics(app: &App) -> Element<'_, Message> {
         .padding([8, 10])
         .width(Length::Fill);
 
-    column![row![toggle_btn, config_btn].spacing(6), panel]
+    column![toggle_btn, panel]
         .spacing(4)
         .into()
 }
@@ -1640,20 +1603,22 @@ fn view_config_panel(app: &App) -> Element<'_, Message> {
     let json = app.config.to_json();
 
     let header = row![
-        text("Live Config").size(12).color(LAVENDER),
+        text("Live Config").size(11).color(OVERLAY0),
         Space::new().width(Length::Fill),
         config_panel_btn("Copy", Message::CopyConfig, GREEN),
-        config_panel_btn("Close", Message::ToggleConfigView, SUBTEXT0),
     ]
     .spacing(4)
     .align_y(iced::Alignment::Center);
 
-    let code_block = container(
-        scrollable(
-            container(highlighted_json(&json)).padding([6, 8]),
-        )
-        .height(Length::Fill)
-        .style(|_theme: &Theme, _status| scrollable_style()),
+    let code_block = scrollable(
+        // Right padding 14px gives scrollbar its own lane
+        container(highlighted_json(&json)).padding(Padding { top: 8.0, right: 14.0, bottom: 8.0, left: 10.0 }),
+    )
+    .height(Length::Fill)
+    .style(|_theme: &Theme, _status| scrollable_style());
+
+    container(
+        column![header, code_block].spacing(6),
     )
     .style(|_theme: &Theme| container::Style {
         background: Some(Background::Color(Color::from_rgb(
@@ -1661,20 +1626,10 @@ fn view_config_panel(app: &App) -> Element<'_, Message> {
             0x14 as f32 / 255.0,
             0x20 as f32 / 255.0,
         ))),
-        border: Border::default()
-            .rounded(8)
-            .width(1.0)
-            .color(SURFACE0),
         ..container::Style::default()
     })
-    .width(Length::Fill)
-    .height(Length::Fill);
-
-    container(
-        column![header, code_block].spacing(8),
-    )
-    .padding([16, 12])
-    .width(320)
+    .padding(Padding { top: 12.0, right: 0.0, bottom: 12.0, left: 12.0 })
+    .width(380)
     .height(Length::Fill)
     .into()
 }
