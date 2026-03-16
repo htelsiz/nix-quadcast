@@ -52,6 +52,46 @@ const MANTLE: Color =
 /// Default LED preview color (matches unlit mic body).
 const DEFAULT_PREVIEW: Color = SURFACE0;
 
+// ---------------------------------------------------------------------------
+// Reusable style helpers
+// ---------------------------------------------------------------------------
+
+fn card<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+    container(content)
+        .style(|_theme: &Theme| container::Style {
+            background: Some(Background::Color(MANTLE)),
+            border: Border::default()
+                .rounded(12)
+                .width(1.0)
+                .color(SURFACE0),
+            ..container::Style::default()
+        })
+        .padding(16)
+        .width(Length::Fill)
+        .into()
+}
+
+fn accent_slider_style(_theme: &Theme, status: slider::Status) -> slider::Style {
+    let handle_color = match status {
+        slider::Status::Hovered => LAVENDER,
+        slider::Status::Dragged => Color { a: 0.9, ..LAVENDER },
+        _ => SUBTEXT0,
+    };
+    slider::Style {
+        rail: slider::Rail {
+            backgrounds: (Background::Color(LAVENDER), Background::Color(SURFACE0)),
+            width: 4.0,
+            border: Border::default().rounded(2),
+        },
+        handle: slider::Handle {
+            shape: slider::HandleShape::Circle { radius: 7.0 },
+            background: Background::Color(handle_color),
+            border_width: 2.0,
+            border_color: SURFACE0,
+        },
+    }
+}
+
 fn main() -> iced::Result {
     env_logger::init();
     iced::application(boot, update, view)
@@ -59,7 +99,7 @@ fn main() -> iced::Result {
         .theme(Theme::CatppuccinMocha)
         .subscription(subscription)
         .window(iced::window::Settings {
-            size: iced::Size::new(880.0, 720.0),
+            size: iced::Size::new(920.0, 740.0),
             icon: load_icon(),
             ..Default::default()
         })
@@ -630,32 +670,49 @@ fn subscription(_app: &App) -> Subscription<Message> {
 
 fn view(app: &App) -> Element<'_, Message> {
     let mic = container(
-        Canvas::new(MicPreview {
-            upper_color: app.upper_preview_color,
-            lower_color: app.lower_preview_color,
-        })
-        .width(180)
-        .height(360),
+        column![
+            row![
+                text("Live Preview").size(11).color(OVERLAY0),
+                Space::new().width(Length::Fill),
+                text(format!(
+                    "{} \u{00B7} {}",
+                    app.mode.name(),
+                    match app.zone {
+                        Zone::Both => "Both Zones",
+                        Zone::Upper => "Upper Zone",
+                        Zone::Lower => "Lower Zone",
+                    }
+                ))
+                .size(11)
+                .color(SURFACE2),
+            ]
+            .padding([0, 4]),
+            Canvas::new(MicPreview {
+                upper_color: app.upper_preview_color,
+                lower_color: app.lower_preview_color,
+            })
+            .width(220)
+            .height(440),
+        ]
+        .spacing(8),
     )
-    .padding([32, 20])
+    .padding([24, 24])
     .center_y(Length::Fill);
 
     let controls = column![
         view_header(),
-        view_profile_selector(app),
-        view_zone_selector(app),
-        view_mode_grid(app),
-        view_sliders(app),
-        view_color_palette(app),
-        Space::new().height(4),
-        view_import(app),
-        view_export(app),
+        card(view_profile_selector(app)),
+        card(
+            column![view_zone_selector(app), view_mode_grid(app),].spacing(12)
+        ),
+        card(view_sliders(app)),
+        card(view_color_palette(app)),
         Space::new().height(Length::Fill),
         view_diagnostics(app),
         view_status(app),
     ]
-    .spacing(10)
-    .padding([28, 32])
+    .spacing(12)
+    .padding([24, 28])
     .width(Length::Fill);
 
     // Vertical separator between mic and controls
@@ -706,10 +763,10 @@ fn section_label(label: &str) -> Element<'_, Message> {
 
 fn view_header() -> Element<'static, Message> {
     column![
-        text("Sliglight").size(24).color(TEXT),
-        text("QuadCast 2S RGB Control").size(12).color(SURFACE2),
+        text("Sliglight").size(26).color(TEXT),
+        text("QuadCast 2S RGB Control").size(13).color(SURFACE2),
     ]
-    .spacing(2)
+    .spacing(4)
     .into()
 }
 
@@ -922,12 +979,12 @@ fn view_sliders(app: &App) -> Element<'_, Message> {
                 .width(Length::Fill),
             text(format!("{}", app.brightness)).size(12).color(TEXT),
         ],
-        slider(0..=100, app.brightness, Message::SetBrightness),
+        slider(0..=100, app.brightness, Message::SetBrightness).style(accent_slider_style),
         row![
             text("Speed").size(12).color(SUBTEXT0).width(Length::Fill),
             text(format!("{}", app.speed)).size(12).color(TEXT),
         ],
-        slider(0..=100, app.speed, Message::SetSpeed),
+        slider(0..=100, app.speed, Message::SetSpeed).style(accent_slider_style),
     ]
     .spacing(4)
     .into()
@@ -951,7 +1008,14 @@ fn view_color_palette(app: &App) -> Element<'_, Message> {
     if let Some(idx) = app.editing_color {
         if idx < app.colors.len() {
             content = content.push(view_color_editor(app, idx));
+            // Import field (shown below editor when editing)
+            content = content.push(view_import(app));
         }
+    }
+
+    // Export text (shown inside color card when present)
+    if !app.export_text.is_empty() {
+        content = content.push(view_export(app));
     }
 
     content.into()
@@ -1121,26 +1185,11 @@ fn channel_slider<'a>(
 }
 
 fn view_export(app: &App) -> Element<'_, Message> {
-    if app.export_text.is_empty() {
-        return Space::new().height(0).into();
-    }
-    container(
-        column![
-            section_label("Exported Profile (JSON)"),
-            text(&app.export_text).size(11).color(SUBTEXT0),
-        ]
-        .spacing(4),
-    )
-    .style(|_theme: &Theme| container::Style {
-        background: Some(Background::Color(MANTLE)),
-        border: Border::default()
-            .rounded(8)
-            .width(1.0)
-            .color(SURFACE0),
-        ..container::Style::default()
-    })
-    .padding([8, 10])
-    .width(Length::Fill)
+    column![
+        section_label("Exported Profile (JSON)"),
+        text(&app.export_text).size(11).color(SUBTEXT0),
+    ]
+    .spacing(4)
     .into()
 }
 
@@ -1437,19 +1486,28 @@ fn pill_btn_style(_theme: &Theme, status: button::Status, selected: bool) -> but
         button::Style {
             background: Some(Background::Color(LAVENDER)),
             text_color: BASE,
-            border: Border::default().rounded(8),
+            border: Border::default()
+                .rounded(8)
+                .width(2.0)
+                .color(Color { a: 0.3, ..LAVENDER }),
             ..button::Style::default()
         }
     } else {
-        let bg = if status == button::Status::Hovered {
-            SURFACE1
+        let (bg, border) = if status == button::Status::Hovered {
+            (
+                SURFACE1,
+                Border::default()
+                    .rounded(8)
+                    .width(1.0)
+                    .color(Color { a: 0.2, ..LAVENDER }),
+            )
         } else {
-            SURFACE0
+            (SURFACE0, Border::default().rounded(8))
         };
         button::Style {
             background: Some(Background::Color(bg)),
             text_color: SUBTEXT0,
-            border: Border::default().rounded(8),
+            border,
             ..button::Style::default()
         }
     }

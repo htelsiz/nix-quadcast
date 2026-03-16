@@ -36,6 +36,27 @@ impl<Message> canvas::Program<Message> for MicPreview {
         let body_y = h * 0.08;
         let body_radius = body_w * 0.22;
 
+        // --- Outer body glow ---
+        let glow_color = Color {
+            r: (self.upper_color.r + self.lower_color.r) / 2.0,
+            g: (self.upper_color.g + self.lower_color.g) / 2.0,
+            b: (self.upper_color.b + self.lower_color.b) / 2.0,
+            a: 1.0,
+        };
+        let outer_glow_layers: &[(f32, f32)] = &[(14.0, 0.03), (10.0, 0.05), (6.0, 0.08)];
+        for &(expand, alpha) in outer_glow_layers {
+            let gc = Color {
+                a: alpha,
+                ..glow_color
+            };
+            let glow = Path::rounded_rectangle(
+                Point::new(body_x - expand, body_y - expand),
+                Size::new(body_w + expand * 2.0, body_h + expand * 2.0),
+                (body_radius + expand * 0.5).into(),
+            );
+            frame.fill(&glow, gc);
+        }
+
         // --- Upper LED half (top half of mic body) ---
         let upper_h = body_h * 0.48;
         draw_led_fill(
