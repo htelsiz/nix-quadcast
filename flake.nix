@@ -8,22 +8,18 @@
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
-      quadcastrgb = pkgs.callPackage ./package.nix { };
+      sliglight = pkgs.callPackage ./gui-package.nix { };
     in
     {
       packages.${system} = {
-        default = quadcastrgb;
-        cli = quadcastrgb;
-        gui = pkgs.callPackage ./gui-package.nix { inherit quadcastrgb; };
+        default = sliglight;
+        gui = sliglight;
       };
 
       nixosModules.default = import ./module.nix;
 
       overlays.default = _final: prev: {
-        quadcastrgb = prev.callPackage ./package.nix { };
-        sliglight = prev.callPackage ./gui-package.nix {
-          quadcastrgb = prev.callPackage ./package.nix { };
-        };
+        sliglight = prev.callPackage ./gui-package.nix { };
       };
     };
 }

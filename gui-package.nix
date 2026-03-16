@@ -1,9 +1,21 @@
 {
   lib,
-  python3Packages,
-  qt6,
+  rustPlatform,
+  libusb1,
+  pkg-config,
+  cmake,
+  makeWrapper,
   makeDesktopItem,
-  quadcastrgb,
+  wayland,
+  libxkbcommon,
+  vulkan-loader,
+  libGL,
+  fontconfig,
+  freetype,
+  libx11,
+  libxcursor,
+  libxrandr,
+  libxi,
 }:
 let
   desktopItem = makeDesktopItem {
@@ -24,46 +36,52 @@ let
       "microphone"
     ];
   };
+
+  runtimeLibs = [
+    wayland
+    libxkbcommon
+    vulkan-loader
+    libGL
+    fontconfig
+    freetype
+    libx11
+    libxcursor
+    libxrandr
+    libxi
+  ];
 in
-python3Packages.buildPythonApplication {
+rustPlatform.buildRustPackage {
   pname = "sliglight";
   version = "0.1.0";
-  pyproject = true;
 
-  src = ./gui;
+  src = ./.;
 
-  build-system = [ python3Packages.setuptools ];
-
-  dependencies = [
-    python3Packages.pyside6
-    python3Packages.libusb1
-  ];
+  cargoLock.lockFile = ./Cargo.lock;
 
   nativeBuildInputs = [
-    qt6.wrapQtAppsHook
-    qt6.qtbase
+    pkg-config
+    cmake
+    makeWrapper
   ];
 
-  # PySide6 needs Qt wrapping applied to Python scripts
-  dontWrapQtApps = true;
-  makeWrapperArgs = [
-    "\${qtWrapperArgs[@]}"
-    "--prefix PATH : ${lib.makeBinPath [ quadcastrgb ]}"
-  ];
+  buildInputs = [ libusb1 ] ++ runtimeLibs;
 
   postInstall = ''
     mkdir -p $out/share/applications
     cp ${desktopItem}/share/applications/*.desktop $out/share/applications/
 
     mkdir -p $out/share/icons/hicolor/scalable/apps
-    cp $src/resources/sliglight.svg $out/share/icons/hicolor/scalable/apps/sliglight.svg
+    cp resources/sliglight.svg $out/share/icons/hicolor/scalable/apps/sliglight.svg
   '';
 
-  # No tests yet
-  doCheck = false;
+  # iced needs runtime access to Wayland/Vulkan/font libraries
+  postFixup = ''
+    wrapProgram $out/bin/sliglight \
+      --suffix LD_LIBRARY_PATH : ${lib.makeLibraryPath runtimeLibs}
+  '';
 
   meta = {
-    description = "Qt6 GUI for HyperX QuadCast RGB lighting control";
+    description = "RGB lighting control for HyperX QuadCast microphones";
     homepage = "https://github.com/htelsiz/nix-quadcast";
     license = lib.licenses.gpl2Only;
     platforms = lib.platforms.linux;

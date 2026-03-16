@@ -6,17 +6,11 @@
 }:
 let
   cfg = config.hardware.quadcast;
-  quadcastrgb = pkgs.callPackage ./package.nix { };
+  sliglight = pkgs.callPackage ./gui-package.nix { };
 in
 {
   options.hardware.quadcast = {
-    enable = lib.mkEnableOption "HyperX QuadCast RGB control (CLI + udev rules)";
-
-    enableGui = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
-      description = "Install the Qt6 GUI application for RGB control.";
-    };
+    enable = lib.mkEnableOption "HyperX QuadCast RGB control (CLI + GUI + udev rules)";
 
     color = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
@@ -24,7 +18,7 @@ in
       example = "ff0000";
       description = ''
         Hex color to apply on boot via a systemd user service.
-        When set, a persistent `quadcast-rgb` service runs `quadcastrgb solid <color>`
+        When set, a persistent `quadcast-rgb` service runs `sliglight-cli solid <color>`
         continuously (the mic reverts to default rainbow if the process stops).
         Set to null to disable the service.
       '';
@@ -39,11 +33,8 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    environment.systemPackages =
-      [ quadcastrgb ]
-      ++ lib.optionals cfg.enableGui [
-        (pkgs.callPackage ./gui-package.nix { inherit quadcastrgb; })
-      ];
+    # Both sliglight (GUI) and sliglight-cli come from the same Rust workspace build
+    environment.systemPackages = [ sliglight ];
 
     # Persistent systemd user service to keep RGB active
     systemd.user.services.quadcast-rgb = lib.mkIf (cfg.color != null) {
@@ -51,17 +42,13 @@ in
       wantedBy = [ "graphical-session.target" ];
       after = [ "graphical-session.target" ];
       serviceConfig = {
-        ExecStart = "${quadcastrgb}/bin/quadcastrgb ${cfg.mode} ${cfg.color}";
+        ExecStart = "${sliglight}/bin/sliglight-cli ${cfg.mode} ${cfg.color}";
         Restart = "on-failure";
         RestartSec = 3;
       };
     };
 
     # udev rules for non-root USB HID access to QuadCast microphones.
-    # TAG+="uaccess" grants the logged-in user full device control via systemd-logind,
-    # which is required for libusb_set_auto_detach_kernel_driver() to work (needs
-    # USBDEVFS_DISCONNECT ioctl permission to unbind usbhid from control interfaces).
-    # Covers Kingston (0951) and HP (03f0) vendor IDs across all known models.
     services.udev.extraRules = ''
       # HyperX QuadCast S (Kingston)
       SUBSYSTEM=="usb", ATTR{idVendor}=="0951", ATTR{idProduct}=="171f", MODE="0666", TAG+="uaccess"
