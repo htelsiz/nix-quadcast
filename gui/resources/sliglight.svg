@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <!-- Catppuccin Mocha palette -->
+    <!-- Outer glow filter -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Upper LED gradient (mauve → blue) -->
+    <linearGradient id="upperLED" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#cba6f7"/>
+      <stop offset="50%" stop-color="#89b4fa"/>
+      <stop offset="100%" stop-color="#cba6f7"/>
+    </linearGradient>
+
+    <!-- Lower LED gradient (peach → red → mauve) -->
+    <linearGradient id="lowerLED" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#fab387"/>
+      <stop offset="50%" stop-color="#f38ba8"/>
+      <stop offset="100%" stop-color="#cba6f7"/>
+    </linearGradient>
+
+    <!-- Upper glow filter -->
+    <filter id="upperGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.537
+                                                       0 0 0 0 0.706
+                                                       0 0 0 0 0.980
+                                                       0 0 0 0.6 0" result="colorBlur"/>
+      <feMerge>
+        <feMergeNode in="colorBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Lower glow filter -->
+    <filter id="lowerGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.953
+                                                       0 0 0 0 0.545
+                                                       0 0 0 0 0.659
+                                                       0 0 0 0.6 0" result="colorBlur"/>
+      <feMerge>
+        <feMergeNode in="colorBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Mic body clip -->
+    <clipPath id="bodyClip">
+      <rect x="68" y="32" width="120" height="152" rx="40" ry="40"/>
+    </clipPath>
+  </defs>
+
+  <!-- Mic body (dark) -->
+  <rect x="68" y="32" width="120" height="152" rx="40" ry="40" fill="#141420"/>
+
+  <!-- Upper LED ring -->
+  <g filter="url(#upperGlow)" clip-path="url(#bodyClip)">
+    <rect x="68" y="48" width="120" height="48" fill="url(#upperLED)" opacity="0.85"/>
+  </g>
+
+  <!-- Lower LED ring -->
+  <g filter="url(#lowerGlow)" clip-path="url(#bodyClip)">
+    <rect x="68" y="118" width="120" height="48" fill="url(#lowerLED)" opacity="0.85"/>
+  </g>
+
+  <!-- Mesh grille lines -->
+  <g clip-path="url(#bodyClip)" opacity="0.15" stroke="#000" stroke-width="1">
+    <line x1="76" y1="46" x2="180" y2="46"/>
+    <line x1="76" y1="54" x2="180" y2="54"/>
+    <line x1="76" y1="62" x2="180" y2="62"/>
+    <line x1="76" y1="70" x2="180" y2="70"/>
+    <line x1="76" y1="78" x2="180" y2="78"/>
+    <line x1="76" y1="86" x2="180" y2="86"/>
+    <line x1="76" y1="94" x2="180" y2="94"/>
+    <line x1="76" y1="102" x2="180" y2="102"/>
+    <line x1="76" y1="110" x2="180" y2="110"/>
+    <line x1="76" y1="118" x2="180" y2="118"/>
+    <line x1="76" y1="126" x2="180" y2="126"/>
+    <line x1="76" y1="134" x2="180" y2="134"/>
+    <line x1="76" y1="142" x2="180" y2="142"/>
+    <line x1="76" y1="150" x2="180" y2="150"/>
+    <line x1="76" y1="158" x2="180" y2="158"/>
+    <line x1="76" y1="166" x2="180" y2="166"/>
+  </g>
+
+  <!-- Mic body outline -->
+  <rect x="68" y="32" width="120" height="152" rx="40" ry="40"
+        fill="none" stroke="#313244" stroke-width="2"/>
+
+  <!-- Mute button (top) -->
+  <ellipse cx="128" cy="30" rx="20" ry="7" fill="#313244"/>
+
+  <!-- Stand -->
+  <rect x="124" y="184" width="8" height="40" rx="4" ry="4" fill="#45475a"/>
+
+  <!-- Base -->
+  <rect x="88" y="220" width="80" height="12" rx="6" ry="6" fill="#45475a"/>
+</svg>

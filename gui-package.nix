@@ -7,11 +7,11 @@
 }:
 let
   desktopItem = makeDesktopItem {
-    name = "quadcast-rgb-gui";
-    desktopName = "QuadCast RGB";
+    name = "sliglight";
+    desktopName = "Sliglight";
     comment = "RGB lighting control for HyperX QuadCast microphones";
-    exec = "quadcast-rgb-gui";
-    icon = "preferences-desktop-color";
+    exec = "sliglight";
+    icon = "sliglight";
     categories = [
       "Utility"
       "Settings"
@@ -26,7 +26,7 @@ let
   };
 in
 python3Packages.buildPythonApplication {
-  pname = "quadcast-rgb-gui";
+  pname = "sliglight";
   version = "0.1.0";
   pyproject = true;
 
@@ -54,6 +54,9 @@ python3Packages.buildPythonApplication {
   postInstall = ''
     mkdir -p $out/share/applications
     cp ${desktopItem}/share/applications/*.desktop $out/share/applications/
+
+    mkdir -p $out/share/icons/hicolor/scalable/apps
+    cp $src/resources/sliglight.svg $out/share/icons/hicolor/scalable/apps/sliglight.svg
   '';
 
   # No tests yet
@@ -64,6 +67,6 @@ python3Packages.buildPythonApplication {
     homepage = "https://github.com/htelsiz/nix-quadcast";
     license = lib.licenses.gpl2Only;
     platforms = lib.platforms.linux;
-    mainProgram = "quadcast-rgb-gui";
+    mainProgram = "sliglight";
   };
 }

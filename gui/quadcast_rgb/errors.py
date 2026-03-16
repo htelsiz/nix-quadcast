@@ -1,4 +1,4 @@
-"""Exception hierarchy for QuadCast RGB control."""
+"""Exception hierarchy for Sliglight QuadCast RGB control."""
 
 
 class QuadcastError(Exception):

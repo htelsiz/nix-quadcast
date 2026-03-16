@@ -1,15 +1,16 @@
-"""QuadCast RGB GUI — Qt6 controller for HyperX QuadCast microphone RGB."""
+"""Sliglight — Qt6 controller for HyperX QuadCast microphone RGB."""
 
 import logging
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 # Force Qt built-in dialogs instead of KDE native (which ignore our dark theme)
 os.environ["QT_QPA_PLATFORMTHEME"] = ""
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPalette, QRadialGradient
+from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPalette, QRadialGradient
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -480,7 +481,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("QuadCast RGB")
+        self.setWindowTitle("Sliglight")
         self.setMinimumSize(620, 700)
 
         # Animation engine (runs in background thread)
@@ -768,6 +769,13 @@ def main() -> None:
     app.setStyle("Fusion")
     app.setPalette(_create_dark_palette())
     app.setStyleSheet(STYLESHEET)
+
+    # Set app icon — try Nix-installed path first, fall back to relative source tree
+    icon_path = Path(sys.prefix) / "share/icons/hicolor/scalable/apps/sliglight.svg"
+    if not icon_path.exists():
+        icon_path = Path(__file__).resolve().parent.parent / "resources/sliglight.svg"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
 
     window = MainWindow()
     window.show()

@@ -21,7 +21,7 @@
 
       overlays.default = _final: prev: {
         quadcastrgb = prev.callPackage ./package.nix { };
-        quadcast-rgb-gui = prev.callPackage ./gui-package.nix {
+        sliglight = prev.callPackage ./gui-package.nix {
           quadcastrgb = prev.callPackage ./package.nix { };
         };
       };
