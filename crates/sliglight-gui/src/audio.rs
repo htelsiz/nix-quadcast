@@ -4,6 +4,9 @@
 //!   1. **Mic** — default source (microphone) for voice-reactive LEDs.
 //!   2. **Music** — default sink monitor (speaker loopback) for music-reactive LEDs.
 //!
+//! Peak levels are written directly to engine atomics from PA callbacks (no iced
+//! message overhead). Only mute state changes flow through iced subscriptions.
+//!
 //! Mute state is polled periodically rather than queried from inside PA callbacks
 //! (calling introspect inside subscribe callbacks crashes libpulse-binding).
 
@@ -21,12 +24,10 @@ use pulse::mainloop::threaded::Mainloop;
 use pulse::proplist::Proplist;
 use pulse::stream::{FlagSet as StreamFlagSet, Stream as PaStream};
 
+use crate::engine;
+
 #[derive(Debug, Clone)]
 pub enum Event {
-    /// Mic input peak level (0.0-1.0).
-    MicPeakLevel(f32),
-    /// Desktop audio output peak level (0.0-1.0).
-    MusicPeakLevel(f32),
     /// Mic mute state changed.
     MuteChanged(bool),
 }
@@ -201,7 +202,6 @@ fn run_pa_monitor(tx: tokio::sync::mpsc::Sender<Event>) -> Result<(), String> {
     let mic_stream = Arc::new(Mutex::new(mic_stream));
     {
         let ms_read = mic_stream.clone();
-        let tx_mic = tx.clone();
         let mut stream = mic_stream.lock().unwrap();
         stream.set_read_callback(Some(Box::new(move |_len| {
             let mut s = ms_read.lock().unwrap();
@@ -210,7 +210,7 @@ fn run_pa_monitor(tx: tokio::sync::mpsc::Sender<Event>) -> Result<(), String> {
                     pulse::stream::PeekResult::Data(buf) if buf.len() >= 4 => {
                         let peak =
                             f32::from_ne_bytes([buf[0], buf[1], buf[2], buf[3]]).abs();
-                        let _ = tx_mic.try_send(Event::MicPeakLevel(peak.clamp(0.0, 1.0)));
+                        engine::set_peak_level(peak.clamp(0.0, 1.0));
                     }
                     _ => {}
                 }
@@ -240,7 +240,6 @@ fn run_pa_monitor(tx: tokio::sync::mpsc::Sender<Event>) -> Result<(), String> {
     let music_stream = Arc::new(Mutex::new(music_stream));
     {
         let ms_read = music_stream.clone();
-        let tx_music = tx.clone();
         let mut stream = music_stream.lock().unwrap();
         stream.set_read_callback(Some(Box::new(move |_len| {
             let mut s = ms_read.lock().unwrap();
@@ -249,8 +248,7 @@ fn run_pa_monitor(tx: tokio::sync::mpsc::Sender<Event>) -> Result<(), String> {
                     pulse::stream::PeekResult::Data(buf) if buf.len() >= 4 => {
                         let peak =
                             f32::from_ne_bytes([buf[0], buf[1], buf[2], buf[3]]).abs();
-                        let _ =
-                            tx_music.try_send(Event::MusicPeakLevel(peak.clamp(0.0, 1.0)));
+                        engine::set_music_peak_level(peak.clamp(0.0, 1.0));
                     }
                     _ => {}
                 }

@@ -66,11 +66,11 @@ pub fn set_music_peak_level(peak: f32) {
     MUSIC_PEAK_LEVEL.store(bits, std::sync::atomic::Ordering::Relaxed);
 }
 
-fn get_peak_level() -> f32 {
+pub fn get_peak_level() -> f32 {
     f32::from_bits(PEAK_LEVEL.load(std::sync::atomic::Ordering::Relaxed))
 }
 
-fn get_music_peak_level() -> f32 {
+pub fn get_music_peak_level() -> f32 {
     f32::from_bits(MUSIC_PEAK_LEVEL.load(std::sync::atomic::Ordering::Relaxed))
 }
 
