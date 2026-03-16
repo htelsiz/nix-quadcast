@@ -1,0 +1,11 @@
+[package]
+name = "sliglight-usb"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "USB protocol for HyperX QuadCast 2S RGB LEDs"
+
+[dependencies]
+rusb = "0.9"
+log.workspace = true
+thiserror.workspace = true

@@ -1,0 +1,16 @@
+[package]
+name = "sliglight-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Animation engine and CLI for Sliglight RGB control"
+
+[[bin]]
+name = "sliglight-cli"
+path = "src/bin/cli.rs"
+
+[dependencies]
+sliglight-usb = { path = "../sliglight-usb" }
+log.workspace = true
+env_logger.workspace = true
+clap = { version = "4", features = ["derive"] }

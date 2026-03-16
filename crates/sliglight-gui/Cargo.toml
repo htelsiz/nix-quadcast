@@ -1,0 +1,18 @@
+[package]
+name = "sliglight-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Sliglight — iced GUI for HyperX QuadCast RGB control"
+
+[[bin]]
+name = "sliglight"
+path = "src/main.rs"
+
+[dependencies]
+sliglight-usb = { path = "../sliglight-usb" }
+sliglight-core = { path = "../sliglight-core" }
+iced = { version = "0.14", features = ["canvas", "tokio", "svg", "image"] }
+tokio = { version = "1", features = ["time"] }
+log.workspace = true
+env_logger.workspace = true
