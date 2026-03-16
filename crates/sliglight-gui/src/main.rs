@@ -3,8 +3,8 @@
 mod engine;
 mod mic_preview;
 
-use iced::widget::{column, container, text};
-use iced::{Element, Length, Subscription, Task, Theme};
+use iced::widget::{button, column, container, row, slider, text, Space};
+use iced::{Background, Border, Color, Element, Length, Subscription, Task, Theme};
 
 use sliglight_core::animations::{Mode, Zone};
 
@@ -35,7 +35,6 @@ enum Status {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Variants used in Task 8 (full GUI layout)
 enum Message {
     SetZone(Zone),
     SetMode(Mode),
@@ -135,19 +134,233 @@ fn subscription(app: &App) -> Subscription<Message> {
 }
 
 fn view(app: &App) -> Element<'_, Message> {
-    // TODO: build full UI in Task 8
-    let status_text = match &app.status {
-        Status::Idle => "Ready".to_string(),
-        Status::Connected => "Connected to QuadCast 2S".to_string(),
-        Status::Error(e) => format!("Error: {e}"),
-    };
-
-    let content = column![text("Sliglight").size(24), text(status_text),]
-        .spacing(20)
-        .padding(20);
+    let content = column![
+        view_title(),
+        view_zone_selector(app),
+        view_mode_grid(app),
+        view_sliders(app),
+        view_color_palette(app),
+        view_actions(),
+        Space::new().height(Length::Fill),
+        view_status(app),
+    ]
+    .spacing(16)
+    .padding(24)
+    .width(Length::Fill);
 
     container(content)
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
+}
+
+// ---------------------------------------------------------------------------
+// View helpers
+// ---------------------------------------------------------------------------
+
+fn view_title() -> Element<'static, Message> {
+    text("Sliglight").size(28).into()
+}
+
+fn view_zone_selector(app: &App) -> Element<'_, Message> {
+    let zones = [
+        (Zone::Both, "Both"),
+        (Zone::Upper, "Upper"),
+        (Zone::Lower, "Lower"),
+    ];
+    let buttons: Vec<Element<'_, Message>> = zones
+        .iter()
+        .map(|(zone, label)| {
+            let selected = app.zone == *zone;
+            let z = *zone;
+            button(text(*label).center())
+                .width(Length::Fill)
+                .on_press(Message::SetZone(z))
+                .style(move |theme, status| zone_btn_style(theme, status, selected))
+                .into()
+        })
+        .collect();
+
+    column![
+        text("Zone").size(16),
+        row(buttons).spacing(8).width(Length::Fill),
+    ]
+    .spacing(6)
+    .into()
+}
+
+fn view_mode_grid(app: &App) -> Element<'_, Message> {
+    let modes = Mode::ALL;
+    // 2 rows x 3 columns
+    let top_row: Vec<Element<'_, Message>> = modes[..3]
+        .iter()
+        .map(|m| mode_button(app, *m))
+        .collect();
+    let bottom_row: Vec<Element<'_, Message>> = modes[3..]
+        .iter()
+        .map(|m| mode_button(app, *m))
+        .collect();
+
+    column![
+        text("Mode").size(16),
+        row(top_row).spacing(8).width(Length::Fill),
+        row(bottom_row).spacing(8).width(Length::Fill),
+    ]
+    .spacing(6)
+    .into()
+}
+
+fn mode_button<'a>(app: &App, mode: Mode) -> Element<'a, Message> {
+    let selected = app.mode == mode;
+    let label = format!("{} {}", mode.icon(), mode.name());
+    button(text(label).center())
+        .width(Length::Fill)
+        .on_press(Message::SetMode(mode))
+        .style(move |theme, status| zone_btn_style(theme, status, selected))
+        .into()
+}
+
+fn view_sliders(app: &App) -> Element<'_, Message> {
+    let brightness_label = format!("Brightness: {}", app.brightness);
+    let speed_label = format!("Speed: {}", app.speed);
+
+    column![
+        text("Settings").size(16),
+        column![
+            text(brightness_label).size(14),
+            slider(0..=100, app.brightness, Message::SetBrightness),
+        ]
+        .spacing(4),
+        column![
+            text(speed_label).size(14),
+            slider(0..=100, app.speed, Message::SetSpeed),
+        ]
+        .spacing(4),
+    ]
+    .spacing(8)
+    .into()
+}
+
+fn view_color_palette(app: &App) -> Element<'_, Message> {
+    let mut items: Vec<Element<'_, Message>> = Vec::new();
+
+    for (i, &(r, g, b)) in app.colors.iter().enumerate() {
+        let swatch = button(Space::new().width(24).height(24))
+            .style(move |_theme, _status| swatch_style(r, g, b))
+            .on_press(Message::SetColor(i, (r, g, b)));
+
+        if i == 0 {
+            // First color cannot be removed
+            items.push(swatch.into());
+        } else {
+            let remove = button(text("\u{00d7}").size(12).center())
+                .on_press(Message::RemoveColor(i))
+                .padding([2, 6]);
+            items.push(
+                column![swatch, remove]
+                    .spacing(2)
+                    .align_x(iced::Alignment::Center)
+                    .into(),
+            );
+        }
+    }
+
+    if app.colors.len() < 11 {
+        let add_btn = button(text("+").size(18).center())
+            .width(32)
+            .height(32)
+            .on_press(Message::AddColor);
+        items.push(add_btn.into());
+    }
+
+    column![
+        text("Colors").size(16),
+        row(items).spacing(8).align_y(iced::Alignment::End),
+    ]
+    .spacing(6)
+    .into()
+}
+
+fn view_actions() -> Element<'static, Message> {
+    row![
+        button(text("Apply").center())
+            .width(Length::Fill)
+            .on_press(Message::Apply)
+            .style(|theme, status| apply_btn_style(theme, status)),
+        button(text("Reset").center())
+            .width(Length::Fill)
+            .on_press(Message::Reset),
+    ]
+    .spacing(12)
+    .into()
+}
+
+fn view_status(app: &App) -> Element<'_, Message> {
+    let (label, color) = match &app.status {
+        Status::Idle => ("Ready", Color::from_rgb(0.6, 0.6, 0.6)),
+        Status::Connected => (
+            "Connected to QuadCast 2S",
+            Color::from_rgb(0.4, 0.9, 0.4),
+        ),
+        Status::Error(_) => ("Error", Color::from_rgb(0.9, 0.3, 0.3)),
+    };
+    let status_text = match &app.status {
+        Status::Error(e) => format!("Error: {e}"),
+        _ => label.to_string(),
+    };
+    container(text(status_text).size(13).color(color))
+        .width(Length::Fill)
+        .padding([8, 0])
+        .into()
+}
+
+// ---------------------------------------------------------------------------
+// Button styles
+// ---------------------------------------------------------------------------
+
+fn zone_btn_style(
+    theme: &Theme,
+    status: button::Status,
+    selected: bool,
+) -> button::Style {
+    let palette = theme.extended_palette();
+    let mut style = button::Style {
+        border: Border::default().rounded(6),
+        ..button::Style::default()
+    };
+
+    if selected {
+        style.background = Some(Background::Color(palette.primary.base.color));
+        style.text_color = palette.primary.base.text;
+    } else {
+        style.background = Some(Background::Color(palette.background.weak.color));
+        style.text_color = palette.background.weak.text;
+        if status == button::Status::Hovered {
+            style.background = Some(Background::Color(palette.background.strong.color));
+        }
+    }
+    style
+}
+
+fn swatch_style(r: u8, g: u8, b: u8) -> button::Style {
+    button::Style {
+        background: Some(Background::Color(Color::from_rgb8(r, g, b))),
+        border: Border::default().rounded(4).width(2).color(Color::from_rgb(0.3, 0.3, 0.3)),
+        ..button::Style::default()
+    }
+}
+
+fn apply_btn_style(theme: &Theme, status: button::Status) -> button::Style {
+    let palette = theme.extended_palette();
+    let mut style = button::Style {
+        border: Border::default().rounded(6),
+        background: Some(Background::Color(palette.success.base.color)),
+        text_color: palette.success.base.text,
+        ..button::Style::default()
+    };
+    if status == button::Status::Hovered {
+        style.background = Some(Background::Color(palette.success.strong.color));
+        style.text_color = palette.success.strong.text;
+    }
+    style
 }

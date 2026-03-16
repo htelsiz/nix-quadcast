@@ -12,11 +12,15 @@ const TARGET_FPS: u64 = 30;
 const FRAME_INTERVAL: Duration = Duration::from_millis(1000 / TARGET_FPS);
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Fields used in Task 8 (full GUI layout)
 pub enum Event {
     Connected,
     Error(String),
-    FrameSent { upper: Color, lower: Color },
+    FrameSent {
+        #[allow(dead_code)]
+        upper: Color,
+        #[allow(dead_code)]
+        lower: Color,
+    },
 }
 
 /// Hashable configuration for the animation subscription.
