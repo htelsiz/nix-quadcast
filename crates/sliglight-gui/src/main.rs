@@ -33,6 +33,7 @@ struct App {
     brightness: u8,
     speed: u8,
     colors: Vec<(u8, u8, u8)>,
+    editing_color: Option<usize>,
     status: Status,
     engine: Option<engine::Handle>,
     upper_preview_color: Color,
@@ -54,6 +55,10 @@ enum Message {
     AddColor,
     RemoveColor(usize),
     SetColor(usize, (u8, u8, u8)),
+    ToggleColorEditor(usize),
+    SetColorR(u8),
+    SetColorG(u8),
+    SetColorB(u8),
     Apply,
     Reset,
     EngineEvent(engine::Event),
@@ -67,6 +72,7 @@ fn boot() -> (App, Task<Message>) {
             brightness: 80,
             speed: 81,
             colors: vec![(255, 0, 0)],
+            editing_color: None,
             status: Status::Idle,
             engine: None,
             upper_preview_color: DEFAULT_PREVIEW,
@@ -103,6 +109,14 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::RemoveColor(i) => {
             if app.colors.len() > 1 && i < app.colors.len() {
                 app.colors.remove(i);
+                // Close editor if the removed color was being edited, or adjust index
+                if let Some(idx) = app.editing_color {
+                    if idx == i {
+                        app.editing_color = None;
+                    } else if idx > i {
+                        app.editing_color = Some(idx - 1);
+                    }
+                }
             }
         }
         Message::SetColor(i, c) => {
@@ -110,7 +124,36 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 app.colors[i] = c;
             }
         }
+        Message::ToggleColorEditor(i) => {
+            if app.editing_color == Some(i) {
+                app.editing_color = None;
+            } else if i < app.colors.len() {
+                app.editing_color = Some(i);
+            }
+        }
+        Message::SetColorR(v) => {
+            if let Some(idx) = app.editing_color {
+                if idx < app.colors.len() {
+                    app.colors[idx].0 = v;
+                }
+            }
+        }
+        Message::SetColorG(v) => {
+            if let Some(idx) = app.editing_color {
+                if idx < app.colors.len() {
+                    app.colors[idx].1 = v;
+                }
+            }
+        }
+        Message::SetColorB(v) => {
+            if let Some(idx) = app.editing_color {
+                if idx < app.colors.len() {
+                    app.colors[idx].2 = v;
+                }
+            }
+        }
         Message::Apply => {
+            app.editing_color = None;
             app.engine = Some(engine::Handle::start(
                 app.mode,
                 app.colors.clone(),
@@ -126,6 +169,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             app.brightness = 80;
             app.speed = 81;
             app.colors = vec![(255, 0, 0)];
+            app.editing_color = None;
             app.engine = None;
             app.status = Status::Idle;
             app.upper_preview_color = DEFAULT_PREVIEW;
@@ -273,9 +317,10 @@ fn view_color_palette(app: &App) -> Element<'_, Message> {
     let mut items: Vec<Element<'_, Message>> = Vec::new();
 
     for (i, &(r, g, b)) in app.colors.iter().enumerate() {
+        let is_editing = app.editing_color == Some(i);
         let swatch = button(Space::new().width(24).height(24))
-            .style(move |_theme, _status| swatch_style(r, g, b))
-            .on_press(Message::SetColor(i, (r, g, b)));
+            .style(move |_theme, _status| swatch_style(r, g, b, is_editing))
+            .on_press(Message::ToggleColorEditor(i));
 
         if i == 0 {
             // First color cannot be removed
@@ -301,12 +346,59 @@ fn view_color_palette(app: &App) -> Element<'_, Message> {
         items.push(add_btn.into());
     }
 
-    column![
+    let mut palette = column![
         text("Colors").size(16),
         row(items).spacing(8).align_y(iced::Alignment::End),
     ]
-    .spacing(6)
-    .into()
+    .spacing(6);
+
+    // Inline color editor when a swatch is selected
+    if let Some(idx) = app.editing_color {
+        if idx < app.colors.len() {
+            palette = palette.push(view_color_editor(app.colors[idx]));
+        }
+    }
+
+    palette.into()
+}
+
+fn view_color_editor((r, g, b): (u8, u8, u8)) -> Element<'static, Message> {
+    let preview = container(Space::new().width(48).height(48))
+        .style(move |_theme: &Theme| container::Style {
+            background: Some(Background::Color(Color::from_rgb8(r, g, b))),
+            border: Border::default().rounded(6).width(2).color(Color::from_rgb(0.4, 0.4, 0.4)),
+            ..container::Style::default()
+        });
+
+    let hex_label = text(format!("#{r:02X}{g:02X}{b:02X}")).size(13);
+
+    let r_slider = column![
+        text(format!("R: {r}")).size(13).color(Color::from_rgb(0.9, 0.4, 0.4)),
+        slider(0..=255, r, Message::SetColorR),
+    ]
+    .spacing(2);
+
+    let g_slider = column![
+        text(format!("G: {g}")).size(13).color(Color::from_rgb(0.4, 0.9, 0.4)),
+        slider(0..=255, g, Message::SetColorG),
+    ]
+    .spacing(2);
+
+    let b_slider = column![
+        text(format!("B: {b}")).size(13).color(Color::from_rgb(0.4, 0.5, 0.9)),
+        slider(0..=255, b, Message::SetColorB),
+    ]
+    .spacing(2);
+
+    let sliders = column![r_slider, g_slider, b_slider].spacing(6).width(Length::Fill);
+
+    let preview_col = column![preview, hex_label]
+        .spacing(4)
+        .align_x(iced::Alignment::Center);
+
+    container(row![preview_col, sliders].spacing(16).align_y(iced::Alignment::Center))
+        .padding([8, 0])
+        .into()
 }
 
 fn view_actions() -> Element<'static, Message> {
@@ -370,10 +462,19 @@ fn zone_btn_style(
     style
 }
 
-fn swatch_style(r: u8, g: u8, b: u8) -> button::Style {
+fn swatch_style(r: u8, g: u8, b: u8, selected: bool) -> button::Style {
+    let border_color = if selected {
+        Color::WHITE
+    } else {
+        Color::from_rgb(0.3, 0.3, 0.3)
+    };
+    let border_width = if selected { 3.0 } else { 2.0 };
     button::Style {
         background: Some(Background::Color(Color::from_rgb8(r, g, b))),
-        border: Border::default().rounded(4).width(2).color(Color::from_rgb(0.3, 0.3, 0.3)),
+        border: Border::default()
+            .rounded(4)
+            .width(border_width)
+            .color(border_color),
         ..button::Style::default()
     }
 }
